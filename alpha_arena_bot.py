@@ -152,14 +152,14 @@ class AlphaArenaBot:
         # [NEW V2.0] ROLL状态追踪器 (需先创建，再传给AI引擎)
         self.roll_tracker = RollTracker(data_file='roll_state.json')
 
-        # [NEW V3.5] 浮盈滚仓管理器 - 2分钟超短线策略
+        # [NEW V3.5] 浮盈滚仓管理器 - 2分钟超短线策略 (激进配置)
         self.rolling_manager = RollingPositionManager(
-            profit_threshold_pct=1.5,  # 盈利>1.5%触发滚仓 (降低门槛)
-            roll_ratio=0.5,  # 每次加仓50%
-            max_rolls=2,  # 最多滚2次
-            min_roll_interval_minutes=3  # 最少间隔3分钟 (超短线)
+            profit_threshold_pct=0.8,  # 盈利>0.8%触发滚仓 (极低门槛,更激进)
+            roll_ratio=0.6,  # 每次加仓60% (更大比例)
+            max_rolls=3,  # 最多滚3次 (更多次数)
+            min_roll_interval_minutes=1  # 最少间隔1分钟 (极速滚仓)
         )
-        self.logger.info("[OK] 浮盈滚仓管理器已启动 (盈利>1.5%触发, 最多滚2次)")
+        self.logger.info("[OK] 🔥 激进滚仓管理器已启动 (盈利>0.8%触发, 最多滚3次, 60%加仓)")
 
         # AI 交易引擎
         self.ai_engine = AITradingEngine(
@@ -371,6 +371,10 @@ class AlphaArenaBot:
             if existing_position:
                 # [NEW V3.0] 首先检查是否应该滚仓 (浮盈加仓)
                 self._check_and_execute_rolling(symbol, existing_position)
+
+                # [NEW V3.6] 强制止盈检查: 赚够$2立即平仓
+                if self._check_and_force_close_if_profit_target(symbol, existing_position):
+                    return  # 已强制平仓,跳过后续AI评估
 
                 # [OK] 新功能: 让AI评估是否应该平仓
                 self.logger.info(f"  [SEARCH] {symbol} 已有持仓，让AI评估是否平仓...")
@@ -823,6 +827,41 @@ class AlphaArenaBot:
             self.logger.error(f"关闭过程出错: {e}")
 
 
+    def _check_and_force_close_if_profit_target(self, symbol: str, position: Dict) -> bool:
+        """
+        [NEW V3.6] 强制止盈检查: 赚够$2立即平仓
+
+        Args:
+            symbol: 交易对
+            position: 持仓信息
+
+        Returns:
+            bool: True表示已平仓, False表示未达到止盈目标
+        """
+        try:
+            unrealized_pnl = float(position.get('unRealizedProfit', 0))
+            PROFIT_TARGET = 2.0  # 止盈目标: $2
+
+            if unrealized_pnl >= PROFIT_TARGET:
+                self.logger.info(f"\n🎯 [FORCE-CLOSE] {symbol} 达到止盈目标!")
+                self.logger.info(f"   当前盈利: ${unrealized_pnl:.2f} (目标: ${PROFIT_TARGET})")
+                self.logger.info(f"   执行强制平仓...")
+
+                # 执行平仓
+                close_result = self.binance.close_all_positions(symbol)
+                if close_result:
+                    self.logger.info(f"   ✅ 强制平仓成功! 锁定盈利 ${unrealized_pnl:.2f}")
+                    return True
+                else:
+                    self.logger.error(f"   ❌ 强制平仓失败")
+                    return False
+
+            return False
+
+        except Exception as e:
+            self.logger.error(f"  [ERROR] 止盈检查失败: {e}")
+            return False
+
     def _check_and_execute_rolling(self, symbol: str, position: Dict):
         """
         [NEW V3.5] 检查并执行浮盈滚仓
@@ -871,20 +910,21 @@ class AlphaArenaBot:
                 # 执行加仓
                 try:
                     side = 'BUY' if pos_amt > 0 else 'SELL'
+                    position_side = 'LONG' if pos_amt > 0 else 'SHORT'
                     leverage = int(position.get('leverage', 30))
 
-                    self.logger.info(f"   执行加仓: {side} {abs(roll_quantity):.4f} {symbol} ({leverage}x)")
+                    self.logger.info(f"   执行加仓: {side} {abs(roll_quantity):.4f} {symbol} ({leverage}x) [positionSide={position_side}]")
 
                     # 确保杠杆设置正确
                     self.binance.set_leverage(symbol, leverage)
 
-                    # 创建市价单加仓
+                    # 创建市价单加仓 (使用正确的positionSide以支持对冲模式)
                     order_result = self.binance.create_futures_order(
                         symbol=symbol,
                         side=side,
                         order_type='MARKET',
                         quantity=abs(roll_quantity),
-                        position_side='BOTH'
+                        position_side=position_side
                     )
 
                     if order_result:

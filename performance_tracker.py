@@ -329,8 +329,12 @@ class PerformanceTracker:
 
             for trade in trades:
                 if trade.get('action') in ['BUY', 'SELL', 'OPEN_LONG', 'OPEN_SHORT', 'CLOSE', 'CLOSE_LONG', 'CLOSE_SHORT']:
-                    price = trade.get('price', 0)
-                    quantity = trade.get('quantity', 0)
+                    price = trade.get('price') or 0
+                    quantity = trade.get('quantity') or 0
+
+                    # 跳过无效数据
+                    if price == 0 or quantity == 0:
+                        continue
 
                     # 计算名义价值（不考虑杠杆，因为手续费基于名义价值）
                     notional = price * quantity
