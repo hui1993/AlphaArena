@@ -61,28 +61,19 @@ class DeepSeekClient:
             return {'session': '未知', 'volatility': 'unknown', 'recommendation': '谨慎交易', 'aggressive_mode': False, 'beijing_hour': 0, 'utc_hour': 0}
 
     def chat_completion(self, messages: List[Dict], model: str = "deepseek/deepseek-chat",
-                       temperature: float = 0.7, max_tokens: int = 2000) -> Dict:
-        """通用聊天完成接口"""
-        try:
-            response = requests.post(
-                f"{self.base_url}/chat/completions",
-                headers=self.headers,
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens
-                },
-                timeout=180  # 统一增加到180秒
-            )
+                       temperature: float = 0.7, max_tokens: int = 2000,
+                       timeout: int = None, max_retries: int = 2) -> Dict:
+        """
+        调用 DeepSeek Chat 完成 API（带重试机制）
 
-            if response.status_code == 200:
-                return response.json()
-            else:
-                self.logger.error(f"API错误: {response.status_code} - {response.text}")
-                return {"error": f"API错误: {response.status_code}"}
+        Args:
+            messages: 对话消息列表
+            model: 模型名称
+            temperature: 温度参数 (0-2)
+            max_tokens: 最大 token 数
+            timeout: 超时时间（秒），None则自动根据模型类型设置
+            max_retries: 最大重试次数
 
-<<<<<<< HEAD
         Returns:
             API 响应
         """
