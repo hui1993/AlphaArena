@@ -226,9 +226,9 @@ class AdvancedPositionManager:
             if current_size < 10:  # 最小10 USDT
                 raise ValueError(f"加仓大小{current_size:.2f} USDT太小")
 
-            # 获取当前价格
-            ticker = self.client.get_ticker_price(symbol)
-            price = float(ticker['price'])
+            # 获取当前价格（使用期货API以支持期货专用交易对）
+            ticker = self.client.get_futures_24h_ticker(symbol)
+            price = float(ticker['lastPrice'])
 
             # 计算数量
             quantity = current_size / price

@@ -511,7 +511,7 @@ if __name__ == '__main__':
     os.makedirs('templates', exist_ok=True)
 
     print("[WEB] 启动 Web 仪表板...")
-    print("[ANALYZE] 访问: http://localhost:5001")
+    print("[ANALYZE] 访问: http://localhost:5002")
     print("⚡ WebSocket 实时推送已启用（延迟 <100ms）")
 
     # 启动后台推送线程
@@ -519,4 +519,4 @@ if __name__ == '__main__':
     push_thread.start()
 
     # 使用 SocketIO 启动（而非 app.run）
-    socketio.run(app, host='0.0.0.0', port=5001, debug=False, allow_unsafe_werkzeug=True)
+    socketio.run(app, host='0.0.0.0', port=5002, debug=False, allow_unsafe_werkzeug=True)

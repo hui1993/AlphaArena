@@ -233,7 +233,7 @@ class BinanceClient:
         return self._request('GET', '/api/v3/ticker/24hr', params=params)
 
     def get_klines(self, symbol: str, interval: str, limit: int = 100,
-                   startTime: int = None, endTime: int = None) -> List:
+                   startTime: int = None, endTime: int = None, use_futures: bool = True) -> List:
         """
         获取K线数据
 
@@ -243,6 +243,15 @@ class BinanceClient:
             limit: 获取数量 (最大1000)
             startTime: 开始时间戳(毫秒)
             endTime: 结束时间戳(毫秒)
+            use_futures: 是否使用期货API (默认True，因为AlphaArena是期货交易系统)
+
+        Returns:
+            K线数据列表
+
+        Note:
+            - 默认使用期货API，因为这是期货交易系统
+            - 期货K线价格更准确反映期货标记价格
+            - 如果use_futures=False，会先尝试现货API，失败后回退到期货API
         """
         params = {
             'symbol': symbol,
@@ -253,7 +262,49 @@ class BinanceClient:
             params['startTime'] = startTime
         if endTime:
             params['endTime'] = endTime
-        return self._request('GET', '/api/v3/klines', params=params)
+        
+        # 默认使用期货API（因为这是期货交易系统）
+        if use_futures:
+            return self.get_futures_klines(symbol, interval, limit, startTime, endTime)
+        
+        # 如果明确要求使用现货API，先尝试现货，失败后回退到期货
+        try:
+            return self._request('GET', '/api/v3/klines', params=params)
+        except Exception as e:
+            error_str = str(e)
+            # 如果是Invalid symbol错误，尝试期货API
+            if '-1121' in error_str or 'Invalid symbol' in error_str:
+                self.logger.warning(f"现货API不支持 {symbol}，自动回退到期货API...")
+                return self.get_futures_klines(symbol, interval, limit, startTime, endTime)
+            else:
+                # 其他错误直接抛出
+                raise
+
+    def get_futures_klines(self, symbol: str, interval: str, limit: int = 100,
+                          startTime: int = None, endTime: int = None) -> List:
+        """
+        获取期货K线数据
+
+        Args:
+            symbol: 交易对 (如 'BTCUSDT', '1000SHIBUSDT')
+            interval: K线间隔 ('1m', '5m', '15m', '1h', '4h', '1d')
+            limit: 获取数量 (最大1000)
+            startTime: 开始时间戳(毫秒)
+            endTime: 结束时间戳(毫秒)
+
+        Returns:
+            K线数据列表
+        """
+        params = {
+            'symbol': symbol,
+            'interval': interval,
+            'limit': limit
+        }
+        if startTime:
+            params['startTime'] = startTime
+        if endTime:
+            params['endTime'] = endTime
+        return self._request('GET', '/fapi/v1/klines', params=params, futures=True)
 
     def get_order_book(self, symbol: str, limit: int = 100) -> Dict:
         """获取订单簿深度"""

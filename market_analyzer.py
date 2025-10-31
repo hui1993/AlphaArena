@@ -22,13 +22,16 @@ class MarketAnalyzer:
         self.client = client
 
     def get_current_price(self, symbol: str) -> float:
-        """获取当前价格"""
-        ticker = self.client.get_ticker_price(symbol)
-        return float(ticker['price'])
+        """获取当前价格（使用期货API）"""
+        # 使用期货API获取24h ticker，从中提取lastPrice
+        # 这样可以支持期货专用交易对（如1000SHIBUSDT）
+        ticker = self.client.get_futures_24h_ticker(symbol)
+        return float(ticker['lastPrice'])
 
     def get_price_change_24h(self, symbol: str) -> Dict:
-        """获取24小时价格变化"""
-        ticker = self.client.get_24h_ticker(symbol)
+        """获取24小时价格变化（使用期货API）"""
+        # 使用期货API而不是现货API，以支持期货专用交易对
+        ticker = self.client.get_futures_24h_ticker(symbol)
         return {
             'symbol': symbol,
             'price': float(ticker['lastPrice']),

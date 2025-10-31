@@ -22,8 +22,11 @@ class DeepSeekClient:
             api_key: DeepSeek API 密钥
         """
         self.api_key = api_key
-        self.base_url = "https://zenmux.ai/api/v1"  # ZenMux API 端点
-        self.model_name = "deepseek/deepseek-chat"  # ZenMux 模型名称
+        # 优先使用官方API，如果失败则使用ZenMux
+        self.base_url = "https://api.deepseek.com/v1"  # 官方 DeepSeek API
+        self.zenmux_url = "https://zenmux.ai/api/v1"  # ZenMux API 备用
+        self.model_name = "deepseek-chat"  # 官方模型名称
+        self.zenmux_model = "deepseek/deepseek-chat"  # ZenMux 模型名称
         self.headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
@@ -137,15 +140,35 @@ class DeepSeekClient:
                 if attempt > 0:
                     self.logger.warning(f"正在重试... (第{attempt}/{max_retries}次)")
 
-                response = requests.post(
-                    f"{self.base_url}/chat/completions",
-                    headers=self.headers,
-                    json=payload,
-                    timeout=timeout
-                )
-
-                response.raise_for_status()
-                result = response.json()
+                # 首先尝试官方API
+                try:
+                    # 确保使用官方API的模型名称
+                    official_payload = payload.copy()
+                    official_payload["model"] = self.model_name
+                    
+                    response = requests.post(
+                        f"{self.base_url}/chat/completions",
+                        headers=self.headers,
+                        json=official_payload,
+                        timeout=timeout
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+                except (requests.exceptions.RequestException, ValueError) as api_error:
+                    # 如果官方API失败，尝试ZenMux备用
+                    if attempt == 0:  # 只在第一次失败时尝试备用
+                        self.logger.warning(f"官方API失败，尝试ZenMux备用: {api_error}")
+                        payload["model"] = self.zenmux_model
+                        response = requests.post(
+                            f"{self.zenmux_url}/chat/completions",
+                            headers=self.headers,
+                            json=payload,
+                            timeout=timeout
+                        )
+                        response.raise_for_status()
+                        result = response.json()
+                    else:
+                        raise api_error
 
                 # 记录缓存使用情况（如果API返回了缓存统计）
                 if 'usage' in result:

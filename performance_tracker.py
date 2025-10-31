@@ -102,9 +102,22 @@ class PerformanceTracker:
 
         if entry_trade:
             # 计算实际盈亏
-            entry_price = entry_trade['price']
-            quantity = entry_trade['quantity']
-            leverage = entry_trade['leverage']
+            entry_price = entry_trade.get('price')
+            quantity = entry_trade.get('quantity')
+            leverage = entry_trade.get('leverage')
+
+            # 检查必要字段是否存在且有效
+            if entry_price is None or quantity is None or leverage is None:
+                self.logger.error(f"交易记录缺少必要字段: entry_price={entry_price}, quantity={quantity}, leverage={leverage}")
+                return 0
+
+            try:
+                entry_price = float(entry_price)
+                quantity = float(quantity)
+                leverage = float(leverage)
+            except (ValueError, TypeError) as e:
+                self.logger.error(f"交易记录数值转换失败: {e}")
+                return 0
 
             if entry_trade['action'] in ['OPEN_LONG', 'BUY']:
                 price_diff = close_price - entry_price
@@ -331,6 +344,18 @@ class PerformanceTracker:
                 if trade.get('action') in ['BUY', 'SELL', 'OPEN_LONG', 'OPEN_SHORT', 'CLOSE', 'CLOSE_LONG', 'CLOSE_SHORT']:
                     price = trade.get('price', 0)
                     quantity = trade.get('quantity', 0)
+
+                    # 确保price和quantity不为None且为有效数值
+                    if price is None or quantity is None:
+                        self.logger.warning(f"跳过无效交易记录: price={price}, quantity={quantity}")
+                        continue
+                    
+                    try:
+                        price = float(price)
+                        quantity = float(quantity)
+                    except (ValueError, TypeError):
+                        self.logger.warning(f"跳过无效数值交易记录: price={price}, quantity={quantity}")
+                        continue
 
                     # 计算名义价值（不考虑杠杆，因为手续费基于名义价值）
                     notional = price * quantity
