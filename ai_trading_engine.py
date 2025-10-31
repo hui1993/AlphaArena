@@ -396,6 +396,7 @@ class AITradingEngine:
 
             account_info = {
                 'balance': futures_balance,
+                'available_balance': futures_balance,  # 可用余额等于账户余额（保证金已占用会自动扣除）
                 'total_value': futures_balance + total_unrealized_pnl,
                 'positions': positions,
                 'unrealized_pnl': total_unrealized_pnl
@@ -437,10 +438,13 @@ class AITradingEngine:
         leverage = int(leverage)
 
         # 🔒 杠杆上限 - 最大20倍（与DeepSeek提示词保持一致）
-        MAX_LEVERAGE = 20
+        MAX_LEVERAGE = 60  # 强制60倍杠杆
         if leverage > MAX_LEVERAGE:
             self.logger.warning(f"[WARNING] AI建议杠杆{leverage}x超过上限{MAX_LEVERAGE}x，已强制降至{MAX_LEVERAGE}x")
             leverage = MAX_LEVERAGE
+        elif leverage < 60:
+            self.logger.info(f"[INFO] AI建议杠杆{leverage}x低于目标，强制提升至60x")
+            leverage = 60  # 强制使用60倍杠杆
         elif leverage < 1:
             self.logger.warning(f"[WARNING] AI建议杠杆{leverage}x过低，已强制调至1x")
             leverage = 1
@@ -565,7 +569,7 @@ class AITradingEngine:
             # 计算所需杠杆
             required_leverage = int(min_notional / amount) + 1
             original_leverage = leverage
-            leverage = min(max(leverage, required_leverage), 25)  # 最大25倍
+            leverage = min(max(leverage, required_leverage), 60)  # 强制60倍杠杆
 
             if leverage != original_leverage:
                 self.logger.info(f"[IDEA] [{symbol}] 智能杠杆调整: {original_leverage}x → {leverage}x "
@@ -683,7 +687,7 @@ class AITradingEngine:
             # 计算所需杠杆
             required_leverage = int(min_notional / amount) + 1
             original_leverage = leverage
-            leverage = min(max(leverage, required_leverage), 25)  # 最大25倍
+            leverage = min(max(leverage, required_leverage), 60)  # 强制60倍杠杆
 
             if leverage != original_leverage:
                 self.logger.info(f"[IDEA] [{symbol}] 智能杠杆调整: {original_leverage}x → {leverage}x "

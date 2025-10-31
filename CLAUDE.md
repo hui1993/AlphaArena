@@ -370,15 +370,43 @@ Edit `deepseek_client.py` → `make_trading_decision()`:
 
 ## Current Implementation Status
 
-### Python Legacy System ✅ (100% Complete)
-- Fully operational 24/7 trading bot
-- Production-ready with comprehensive error handling
-- Web dashboard operational
-- Performance tracking active
-- All features documented
+### Python Trading System ✅ (v3.5-v3.6 Production)
+**Status**: Fully operational 24/7 trading bot with aggressive configuration
 
-### Next.js Modern System 📋 (70% Complete)
+**Current Version**: v3.6 (2分钟超短线 + 60x杠杆 + 浮盈滚仓)
+
+**Core Features Active**:
+- ✅ DeepSeek Chat V3.1 AI decision engine
+- ✅ Rolling position manager (0.8%触发, 60%加仓, 最多3次)
+- ✅ ATR dynamic trailing stops (2.0x multiplier)
+- ✅ Force close on $2 profit target
+- ✅ ROLL state tracking (6次限制)
+- ✅ Advanced position management
+- ✅ Web dashboard (Flask, port 5000)
+- ✅ Comprehensive performance tracking
+- ✅ 60x leverage enforcement
+
+**Key Files**:
+- `alpha_arena_bot.py` - Main orchestrator (1000 lines)
+- `ai_trading_engine.py` - AI decision integration (953 lines)
+- `deepseek_client.py` - DeepSeek API wrapper
+- `rolling_position_manager.py` - 浮盈滚仓管理
+- `roll_tracker.py` - ROLL状态追踪
+- `advanced_position_manager.py` - 高级仓位管理
+- `trailing_stop_manager.py` - ATR动态止损
+- `performance_tracker.py` - 性能指标追踪
+- `web_dashboard.py` - Flask仪表板
+
+**State Files** (auto-generated):
+- `performance_data.json` - 交易记录和性能指标
+- `ai_decisions.json` - AI决策历史（最近200条）
+- `roll_state.json` - 滚仓状态（每个symbol的ROLL次数）
+- `runtime_state.json` - 系统运行统计（可选）
+
+### Next.js Modern System 📋 (70% Complete - Archived)
 See `alpha-arena-nextjs/CLAUDE.md` for detailed status.
+
+**Note**: 开发重心已转向Python系统的v3.x系列优化。Next.js系统作为未来多AI竞技场备选方案保留。
 
 **Completed**: Core libraries, database schema, AI integration, backtesting
 **In Progress**: API routes, React UI components
@@ -462,3 +490,202 @@ AlphaArena/
 - Verify minimum notional value (usually $20+ USDT)
 - Check symbol is valid and trading
 - Review risk manager limits in logs
+
+## Critical Implementation Details (v3.5-v3.6)
+
+### Rolling Position Strategy (浮盈滚仓)
+
+**Trigger Conditions** (rolling_position_manager.py):
+```python
+profit_threshold_pct=0.8  # 盈利>0.8%触发滚仓
+roll_ratio=0.6            # 每次用60%浮盈加仓
+max_rolls=3               # 单个持仓最多滚3次
+min_roll_interval_minutes=1  # 最小间隔1分钟
+```
+
+**Execution Flow** (alpha_arena_bot.py:865-947):
+1. 检查滚仓条件（盈亏百分比）
+2. 构建持仓信息（symbol, pnl_pct, quantity, entry_price, side）
+3. 调用 `rolling_manager.should_roll_position()`
+4. 如果触发：执行市价加仓单（保持同方向）
+5. 记录滚仓到 `rolling_manager.record_roll(symbol)`
+6. 更新 roll_tracker 状态
+
+**ROLL State Tracking** (roll_tracker.py):
+- Max rolls per position: 6次 (硬限制)
+- Data file: `roll_state.json`
+- Tracks: original entry price, current roll count, roll history
+- Methods: `can_roll()`, `increment_roll_count()`, `get_original_entry_price()`
+
+**Integration Points**:
+- alpha_arena_bot.py:153 - RollTracker initialization
+- alpha_arena_bot.py:156-162 - RollingPositionManager initialization
+- alpha_arena_bot.py:372-373 - Check and execute rolling before AI evaluation
+- alpha_arena_bot.py:636-811 - Legacy ROLL execution (AI-triggered)
+- ai_trading_engine.py:53 - RollTracker passed to AITradingEngine
+
+### Force Close on Profit Target
+
+**Implementation** (alpha_arena_bot.py:830-863):
+```python
+PROFIT_TARGET = 2.0  # $2 USD threshold
+
+if unrealized_pnl >= PROFIT_TARGET:
+    # Execute immediate close
+    close_result = self.binance.close_all_positions(symbol)
+    # Bypasses AI evaluation
+```
+
+**Execution Priority**:
+1. Rolling check (if position exists)
+2. **Force close check** (if profit ≥ $2)
+3. AI evaluation (only if not force closed)
+
+**Integration**: alpha_arena_bot.py:376-377
+
+### Leverage Configuration (v3.6)
+
+**Force 60x Leverage** (ai_trading_engine.py:441-450):
+```python
+MAX_LEVERAGE = 60  # Hard limit
+leverage = 60  # Force all positions to 60x
+
+# Smart adjustment for Binance requirements:
+min_notional = max(20, min_qty * current_price)
+required_leverage = int(min_notional / amount) + 1
+leverage = min(max(leverage, required_leverage), 60)
+```
+
+**Position Precision Rules** (ai_trading_engine.py:545-563, 664-681):
+```python
+Symbol-specific minimum quantities:
+- BTCUSDT: 0.001 BTC (3 decimals)
+- ETHUSDT: 0.001 ETH (3 decimals)
+- BNBUSDT: 0.1 BNB (1 decimal)
+- SOLUSDT: 0.1 SOL (1 decimal)
+- DOGEUSDT: 1 DOGE (0 decimals, integer)
+- Others: 0.1 (1 decimal default)
+```
+
+**Why Smart Adjustment**:
+- Binance requires minimum notional value ($20+ USDT)
+- Small accounts may need higher leverage to meet minimum
+- Precision rules prevent "LOT_SIZE" errors
+
+### AI Decision Flow (When Position Exists)
+
+**Sequence** (alpha_arena_bot.py:330-509):
+```
+1. Fetch market data (ticker, price, volume)
+2. Check existing position
+3. IF position exists:
+   a. _check_and_execute_rolling(symbol, position)
+      → rolling_position_manager.should_roll_position()
+      → Execute market order if conditions met
+
+   b. _check_and_force_close_if_profit_target(symbol, position)
+      → If unrealized_pnl >= $2: close_all_positions()
+      → Return True (skip AI evaluation)
+
+   c. ai_engine.analyze_position_for_closing(symbol, position, runtime_stats)
+      → DeepSeek evaluates: HOLD, CLOSE, or ROLL
+      → Execute based on AI decision
+
+4. ELSE (no position):
+   a. ai_engine.analyze_and_trade(symbol, max_position_pct, runtime_stats)
+      → DeepSeek decides: BUY, SELL, or HOLD
+      → Execute based on AI decision
+```
+
+### State File Formats
+
+**performance_data.json**:
+```json
+{
+  "metrics": {
+    "account_value": 10250.50,
+    "total_return_pct": 2.50,
+    "sharpe_ratio": 1.85,
+    "max_drawdown_pct": 5.2,
+    "win_rate_pct": 65.0,
+    "total_trades": 45
+  },
+  "equity_curve": [...],
+  "trades": [...]
+}
+```
+
+**ai_decisions.json** (最近200条):
+```json
+[
+  {
+    "timestamp": "2025-10-25T10:30:00",
+    "cycle": 123,
+    "account_snapshot": {...},
+    "decision": {
+      "symbol": "BTCUSDT",
+      "action": "OPEN_LONG",
+      "confidence": 75,
+      "leverage": 60,
+      "reasoning": "..."
+    },
+    "session_info": {
+      "session": "Asian",
+      "volatility": "low",
+      "aggressive_mode": true
+    },
+    "position_snapshot": null
+  }
+]
+```
+
+**roll_state.json**:
+```json
+{
+  "BTCUSDT": {
+    "original_entry_price": 95000.0,
+    "current_roll_count": 2,
+    "max_rolls": 6,
+    "roll_history": [
+      {
+        "timestamp": "2025-10-25T10:15:00",
+        "current_price": 95800.0,
+        "profit_pct": 0.84,
+        "reinvest_amount": 50.0
+      }
+    ]
+  }
+}
+```
+
+### Critical Code References
+
+**Main Loop** (alpha_arena_bot.py:185-231):
+- Line 206: Update account status
+- Line 210: Process each symbol
+- Line 220: Sleep for TRADING_INTERVAL_SECONDS
+
+**AI Trading Engine** (ai_trading_engine.py):
+- Line 96-223: analyze_and_trade() - Main trading analysis
+- Line 225-319: analyze_position_for_closing() - Position evaluation
+- Line 537-653: _open_long_position() - Execute long with precision
+- Line 655-771: _open_short_position() - Execute short with precision
+
+**Rolling Manager** (alpha_arena_bot.py):
+- Line 156-162: RollingPositionManager initialization
+- Line 865-947: _check_and_execute_rolling() - Auto rolling check
+- Line 636-811: execute_roll_strategy() - AI-triggered rolling
+
+**Force Close** (alpha_arena_bot.py):
+- Line 830-863: _check_and_force_close_if_profit_target()
+
+### Important Behavioral Notes
+
+1. **AI Has Full Autonomy**: No confidence thresholds, AI decides everything
+2. **60x Leverage is Forced**: All positions use 60x regardless of AI suggestion (v3.6)
+3. **$2 Profit Target Bypasses AI**: Immediate close without AI evaluation
+4. **Rolling is Automatic**: Checked before AI evaluation when position exists
+5. **ROLL Limit is Hard**: Max 6 rolls per position (V2.0), 3 rolls (V3.5 via RollingPositionManager)
+6. **Account Display Throttled**: Only shows every 120 seconds to reduce log spam
+7. **Trade Cooldown**: 15 minutes after failed trades to prevent rapid retries
+8. **Dual Model System**: Chat (quick) every analysis + Reasoner (deep) every 10 minutes
