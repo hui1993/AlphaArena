@@ -913,6 +913,46 @@ class AlphaArenaBot:
                     position_side = 'LONG' if pos_amt > 0 else 'SHORT'
                     leverage = int(position.get('leverage', 30))
 
+                    # 检查最小订单价值（币安要求至少20 USDT）
+                    min_notional = 20.0  # 最小订单名义价值
+                    order_notional = abs(roll_quantity) * mark_price
+                    
+                    if order_notional < min_notional:
+                        # 尝试调整数量以满足最小价值要求
+                        adjusted_quantity = min_notional / mark_price
+                        # 根据交易对精度调整（大多数币种支持1位小数）
+                        adjusted_quantity = round(adjusted_quantity, 1)
+                        adjusted_notional = adjusted_quantity * mark_price
+                        
+                        if adjusted_notional < min_notional:
+                            # 即使调整后仍不足，跳过本次滚仓
+                            self.logger.warning(
+                                f"   ⚠️ 滚仓订单价值不足 (${order_notional:.2f} < ${min_notional:.2f})，"
+                                f"调整后仍不足 (${adjusted_notional:.2f})，跳过本次滚仓"
+                            )
+                            return
+                        
+                        roll_quantity = adjusted_quantity if pos_amt > 0 else -adjusted_quantity
+                        self.logger.info(
+                            f"   📊 订单价值调整: ${order_notional:.2f} -> ${adjusted_notional:.2f} "
+                            f"(数量: {abs(roll_quantity):.4f})"
+                        )
+                    
+                    # 检查可用保证金
+                    try:
+                        account_info = self.binance.get_futures_account_info()
+                        available_balance = float(account_info.get('availableBalance', 0))
+                        required_margin = abs(roll_quantity) * mark_price / leverage
+                        
+                        if required_margin > available_balance:
+                            self.logger.warning(
+                                f"   ⚠️ 保证金不足，跳过滚仓: "
+                                f"需要 ${required_margin:.2f}, 可用 ${available_balance:.2f}"
+                            )
+                            return
+                    except Exception as e:
+                        self.logger.warning(f"   ⚠️ 无法检查保证金余额: {e}，继续执行滚仓")
+
                     self.logger.info(f"   执行加仓: {side} {abs(roll_quantity):.4f} {symbol} ({leverage}x) [positionSide={position_side}]")
 
                     # 确保杠杆设置正确

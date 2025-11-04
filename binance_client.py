@@ -221,16 +221,24 @@ class BinanceClient:
     # ========== 市场数据接口 ==========
 
     def get_ticker_price(self, symbol: str = None) -> Dict:
-        """获取当前价格"""
+        """
+        获取当前价格（使用期货API）
+        
+        注意：使用期货API以支持期货专用交易对（如1000SHIBUSDT）
+        """
         params = {}
         if symbol:
             params['symbol'] = symbol
-        return self._request('GET', '/api/v3/ticker/price', params=params)
+        return self._request('GET', '/fapi/v1/ticker/price', params=params, futures=True)
 
     def get_24h_ticker(self, symbol: str) -> Dict:
-        """获取24小时价格统计"""
+        """
+        获取24小时价格统计（使用期货API）
+        
+        注意：使用期货API以支持期货专用交易对（如1000SHIBUSDT）
+        """
         params = {'symbol': symbol}
-        return self._request('GET', '/api/v3/ticker/24hr', params=params)
+        return self._request('GET', '/fapi/v1/ticker/24hr', params=params, futures=True)
 
     def get_klines(self, symbol: str, interval: str, limit: int = 100,
                    startTime: int = None, endTime: int = None, use_futures: bool = True) -> List:
@@ -307,20 +315,28 @@ class BinanceClient:
         return self._request('GET', '/fapi/v1/klines', params=params, futures=True)
 
     def get_order_book(self, symbol: str, limit: int = 100) -> Dict:
-        """获取订单簿深度"""
+        """
+        获取订单簿深度（使用期货API）
+        
+        注意：使用期货API以支持期货专用交易对（如1000SHIBUSDT）
+        """
         params = {
             'symbol': symbol,
             'limit': limit
         }
-        return self._request('GET', '/api/v3/depth', params=params)
+        return self._request('GET', '/fapi/v1/depth', params=params, futures=True)
 
     def get_recent_trades(self, symbol: str, limit: int = 100) -> List:
-        """获取最近成交"""
+        """
+        获取最近成交（使用期货API）
+        
+        注意：使用期货API以支持期货专用交易对（如1000SHIBUSDT）
+        """
         params = {
             'symbol': symbol,
             'limit': limit
         }
-        return self._request('GET', '/api/v3/trades', params=params)
+        return self._request('GET', '/fapi/v1/trades', params=params, futures=True)
 
     # ========== 现货交易接口 ==========
 
