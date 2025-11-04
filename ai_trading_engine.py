@@ -179,9 +179,14 @@ class AITradingEngine:
                 self.runtime_manager.increment_ai_calls()
 
             if not ai_result['success']:
+                error_msg = ai_result.get('error', '未知错误')
+                error_details = ai_result.get('details', {})
+                self.logger.error(f"[{symbol}] AI决策失败: {error_msg}")
+                if error_details:
+                    self.logger.error(f"[{symbol}] 错误详情: {error_details}")
                 return {
                     'success': False,
-                    'error': 'AI 决策失败',
+                    'error': f'AI 决策失败: {error_msg}',
                     'details': ai_result
                 }
 

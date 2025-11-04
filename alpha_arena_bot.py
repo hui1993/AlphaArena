@@ -601,7 +601,11 @@ class AlphaArenaBot:
                     self.logger.info(f"  {narrative}")
 
             else:
-                self.logger.error(f"  [ERROR] 交易失败: {result.get('error')}")
+                error_msg = result.get('error', '未知错误')
+                error_details = result.get('details', {})
+                self.logger.error(f"  [ERROR] 交易失败: {error_msg}")
+                if error_details:
+                    self.logger.error(f"  [ERROR] 详细信息: {error_details}")
 
         except Exception as e:
             self.logger.error(f"处理 {symbol} 失败: {e}")
