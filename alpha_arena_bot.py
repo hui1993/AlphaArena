@@ -27,6 +27,35 @@ from rolling_position_manager import RollingPositionManager  # [NEW V3.0] 浮盈
 class AlphaArenaBot:
     """DeepSeek Ai Trade Bot"""
 
+    @staticmethod
+    def _get_quantity_precision(symbol: str) -> int:
+        """
+        获取交易对的数量精度（小数位数）
+        
+        Args:
+            symbol: 交易对名称
+            
+        Returns:
+            精度（小数位数）
+        """
+        # 根据币安合约规则设置精度
+        if 'BTC' in symbol:
+            return 3  # BTC: 0.001
+        elif 'ETH' in symbol:
+            return 3  # ETH: 0.001
+        elif 'BNB' in symbol:
+            return 1  # BNB: 0.1
+        elif 'SOL' in symbol:
+            return 1  # SOL: 0.1
+        elif 'DOGE' in symbol:
+            return 0  # DOGE: 整数
+        elif symbol in ['AAVEUSDT', 'UNIUSDT', 'LINKUSDT', 'CRVUSDT', 'SNXUSDT', 'DYDXUSDT']:
+            # 这些DeFi币通常要求整数或0位小数
+            return 0  # 整数
+        else:
+            # 默认：大多数山寨币支持1位小数
+            return 1  # 0.1
+
     def __init__(self):
         """初始化机器人"""
         # 设置日志
@@ -989,6 +1018,15 @@ class AlphaArenaBot:
                     position_side = 'LONG' if pos_amt > 0 else 'SHORT'
                     leverage = int(position.get('leverage', 30))
 
+                    # 获取交易对精度（统一处理）
+                    precision = self._get_quantity_precision(symbol)
+                    min_qty = 10 ** (-precision) if precision > 0 else 1.0
+
+                    # 先根据精度调整roll_quantity
+                    roll_quantity = round(abs(roll_quantity), precision)
+                    if pos_amt < 0:
+                        roll_quantity = -roll_quantity
+
                     # 检查最小订单价值（币安要求至少20 USDT）
                     min_notional = 20.0  # 最小订单名义价值
                     order_notional = abs(roll_quantity) * mark_price
@@ -996,8 +1034,11 @@ class AlphaArenaBot:
                     if order_notional < min_notional:
                         # 尝试调整数量以满足最小价值要求
                         adjusted_quantity = min_notional / mark_price
-                        # 根据交易对精度调整（大多数币种支持1位小数）
-                        adjusted_quantity = round(adjusted_quantity, 1)
+                        # 根据交易对精度调整并向上取整到最小精度单位
+                        adjusted_quantity = round(adjusted_quantity, precision)
+                        # 确保满足最小数量要求
+                        if adjusted_quantity < min_qty:
+                            adjusted_quantity = min_qty
                         adjusted_notional = adjusted_quantity * mark_price
                         
                         if adjusted_notional < min_notional:
@@ -1011,8 +1052,20 @@ class AlphaArenaBot:
                         roll_quantity = adjusted_quantity if pos_amt > 0 else -adjusted_quantity
                         self.logger.info(
                             f"   📊 订单价值调整: ${order_notional:.2f} -> ${adjusted_notional:.2f} "
-                            f"(数量: {abs(roll_quantity):.4f})"
+                            f"(数量: {abs(roll_quantity):.{precision if precision > 0 else 0}f})"
                         )
+                    
+                    # 最终精度检查和最小数量验证
+                    roll_quantity = round(abs(roll_quantity), precision)
+                    if pos_amt < 0:
+                        roll_quantity = -roll_quantity
+                    
+                    if abs(roll_quantity) < min_qty:
+                        self.logger.warning(
+                            f"   ⚠️ 滚仓数量过小 ({abs(roll_quantity):.{precision if precision > 0 else 0}f} < {min_qty:.{precision if precision > 0 else 0}f})，"
+                            f"跳过本次滚仓"
+                        )
+                        return
                     
                     # 检查可用保证金
                     try:
@@ -1029,7 +1082,17 @@ class AlphaArenaBot:
                     except Exception as e:
                         self.logger.warning(f"   ⚠️ 无法检查保证金余额: {e}，继续执行滚仓")
 
-                    self.logger.info(f"   执行加仓: {side} {abs(roll_quantity):.4f} {symbol} ({leverage}x) [positionSide={position_side}]")
+                    # 格式化显示精度
+                    if precision == 0:
+                        qty_display = f"{abs(roll_quantity):.0f}"
+                    elif precision == 1:
+                        qty_display = f"{abs(roll_quantity):.1f}"
+                    elif precision == 2:
+                        qty_display = f"{abs(roll_quantity):.2f}"
+                    else:
+                        qty_display = f"{abs(roll_quantity):.{precision}f}"
+                    
+                    self.logger.info(f"   执行加仓: {side} {qty_display} {symbol} ({leverage}x) [positionSide={position_side}]")
 
                     # 确保杠杆设置正确
                     self.binance.set_leverage(symbol, leverage)
