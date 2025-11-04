@@ -100,9 +100,12 @@ class AlphaArenaBot:
         self.default_leverage = int(os.getenv('DEFAULT_LEVERAGE', 3))
         self.trading_interval = int(os.getenv('TRADING_INTERVAL_SECONDS', 300))
 
-        # 交易对
+        # 交易对（配置的交易对）
         symbols_str = os.getenv('TRADING_SYMBOLS', 'BTCUSDT,ETHUSDT')
         self.trading_symbols = [s.strip() for s in symbols_str.split(',')]
+        
+        # 临时交易对列表（启动时检测到的持仓，平仓后自动移除）
+        self.temp_trading_symbols = []
 
         self.logger.info(f"配置加载完成: {len(self.trading_symbols)} 个交易对")
 
@@ -182,6 +185,41 @@ class AlphaArenaBot:
         self.logger.info(f"\n收到信号 {signum}, 正在优雅关闭...")
         self.running = False
 
+    def _check_untracked_positions(self):
+        """
+        检查不在TRADING_SYMBOLS中的持仓
+        
+        Returns:
+            List[Dict]: 未跟踪的持仓列表
+        """
+        try:
+            positions = self.binance.get_active_positions()
+            untracked = []
+            
+            for pos in positions:
+                symbol = pos.get('symbol', '')
+                position_amt = float(pos.get('positionAmt', 0))
+                
+                # 只检查有持仓的交易对
+                if abs(position_amt) > 0 and symbol not in self.trading_symbols:
+                    unrealized_pnl = float(pos.get('unRealizedProfit', 0))
+                    entry_price = float(pos.get('entryPrice', 0))
+                    mark_price = float(pos.get('markPrice', 0))
+                    
+                    untracked.append({
+                        'symbol': symbol,
+                        'position_amt': position_amt,
+                        'unrealized_pnl': unrealized_pnl,
+                        'entry_price': entry_price,
+                        'mark_price': mark_price,
+                        'pnl_pct': ((mark_price - entry_price) / entry_price * 100) if entry_price > 0 else 0
+                    })
+            
+            return untracked
+        except Exception as e:
+            self.logger.error(f"检查未跟踪持仓失败: {e}")
+            return []
+
     def run_forever(self):
         """永久运行主循环"""
         self.logger.info("=" * 60)
@@ -191,6 +229,32 @@ class AlphaArenaBot:
         self.logger.info(f"[TIME]  交易间隔: {self.trading_interval}秒")
         self.logger.info(f"[AI] AI 模型: DeepSeek Chat V3.1")
         self.logger.info("=" * 60)
+
+        # 检查不在TRADING_SYMBOLS中的持仓，并添加到临时交易对列表
+        untracked_positions = self._check_untracked_positions()
+        if untracked_positions:
+            self.logger.info(f"\n[INFO] 检测到 {len(untracked_positions)} 个不在交易对列表中的持仓，添加到临时管理:")
+            
+            added_symbols = []
+            for pos in untracked_positions:
+                symbol = pos['symbol']
+                # 添加到临时交易对列表（不是配置的交易对列表）
+                if symbol not in self.trading_symbols and symbol not in self.temp_trading_symbols:
+                    self.temp_trading_symbols.append(symbol)
+                    added_symbols.append(symbol)
+                    side = "LONG" if pos['position_amt'] > 0 else "SHORT"
+                    pnl_sign = "+" if pos['unrealized_pnl'] >= 0 else ""
+                    self.logger.info(
+                        f"  ✓ {symbol:12s} | {side:5s} | "
+                        f"数量: {abs(pos['position_amt']):.3f} | "
+                        f"盈亏: {pnl_sign}${pos['unrealized_pnl']:.2f} ({pnl_sign}{pos['pnl_pct']:.2f}%)"
+                    )
+            
+            if added_symbols:
+                all_symbols = self.trading_symbols + self.temp_trading_symbols
+                self.logger.info(f"\n[OK] 已添加 {len(added_symbols)} 个临时交易对: {', '.join(added_symbols)}")
+                self.logger.info(f"[OK] 当前管理交易对 ({len(all_symbols)} 个): {', '.join(all_symbols)}")
+                self.logger.info("[NOTE] 临时交易对会在平仓后自动移除，不会修改.env配置文件")
 
         cycle_count = 0
 
@@ -205,8 +269,9 @@ class AlphaArenaBot:
                 # 1. 更新账户状态
                 self._update_account_status()
 
-                # 2. 对每个交易对进行分析和交易
-                for symbol in self.trading_symbols:
+                # 2. 对每个交易对进行分析和交易（包括配置的和临时的）
+                all_symbols = self.trading_symbols + self.temp_trading_symbols
+                for symbol in all_symbols:
                     self._process_symbol(symbol)
 
                     # 短暂延迟避免 API 限流
@@ -432,6 +497,11 @@ class AlphaArenaBot:
                             'reasoning': ai_decision.get('reasoning', ''),
                             'pnl': pnl
                         })
+
+                        # 如果是临时交易对，平仓后从临时列表中移除
+                        if symbol in self.temp_trading_symbols:
+                            self.temp_trading_symbols.remove(symbol)
+                            self.logger.info(f"  [INFO] {symbol} 已从临时交易对列表中移除（不再管理）")
 
                         if pnl > 0:
                             self.logger.info(f"  [OK] 平仓成功 - 盈利 ${pnl:.2f}")
@@ -851,6 +921,12 @@ class AlphaArenaBot:
                 close_result = self.binance.close_all_positions(symbol)
                 if close_result:
                     self.logger.info(f"   ✅ 强制平仓成功! 锁定盈利 ${unrealized_pnl:.2f}")
+                    
+                    # 如果是临时交易对，平仓后从临时列表中移除
+                    if symbol in self.temp_trading_symbols:
+                        self.temp_trading_symbols.remove(symbol)
+                        self.logger.info(f"   [INFO] {symbol} 已从临时交易对列表中移除（不再管理）")
+                    
                     return True
                 else:
                     self.logger.error(f"   ❌ 强制平仓失败")
