@@ -211,7 +211,7 @@ class AlphaArenaBot:
 
     def _signal_handler(self, signum, frame):
         """信号处理器（优雅关闭）"""
-        self.logger.info(f"\n收到信号 {signum}, 正在优雅关闭...")
+        self.logger.info(f"[SIGNAL] 收到信号 {signum}, 正在优雅关闭...")
         self.running = False
 
     def _check_untracked_positions(self):
@@ -262,7 +262,7 @@ class AlphaArenaBot:
         # 检查不在TRADING_SYMBOLS中的持仓，并添加到临时交易对列表
         untracked_positions = self._check_untracked_positions()
         if untracked_positions:
-            self.logger.info(f"\n[INFO] 检测到 {len(untracked_positions)} 个不在交易对列表中的持仓，添加到临时管理:")
+            self.logger.info(f"[INFO] 检测到 {len(untracked_positions)} 个不在交易对列表中的持仓，添加到临时管理:")
             
             added_symbols = []
             for pos in untracked_positions:
@@ -281,7 +281,7 @@ class AlphaArenaBot:
             
             if added_symbols:
                 all_symbols = self.trading_symbols + self.temp_trading_symbols
-                self.logger.info(f"\n[OK] 已添加 {len(added_symbols)} 个临时交易对: {', '.join(added_symbols)}")
+                self.logger.info(f"[OK] 已添加 {len(added_symbols)} 个临时交易对: {', '.join(added_symbols)}")
                 self.logger.info(f"[OK] 当前管理交易对 ({len(all_symbols)} 个): {', '.join(all_symbols)}")
                 self.logger.info("[NOTE] 临时交易对会在平仓后自动移除，不会修改.env配置文件")
 
@@ -290,9 +290,8 @@ class AlphaArenaBot:
         while self.running:
             try:
                 cycle_count += 1
-                self.logger.info(f"\n{'='*60}")
-                self.logger.info(f"[LOOP] 开始第 {cycle_count} 轮交易循环")
-                self.logger.info(f"[TIME] 时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                self.logger.info(f"{'='*60}")
+                self.logger.info(f"[LOOP] 开始第 {cycle_count} 轮交易循环 | [TIME] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 self.logger.info(f"{'='*60}")
 
                 # 1. 更新账户状态
@@ -310,11 +309,11 @@ class AlphaArenaBot:
                 # self._display_performance()
 
                 # 4. 等待下一轮
-                self.logger.info(f"\n[WAIT] 等待 {self.trading_interval} 秒后开始下一轮...")
+                self.logger.info(f"[WAIT] 等待 {self.trading_interval} 秒后开始下一轮...")
                 time.sleep(self.trading_interval)
 
             except KeyboardInterrupt:
-                self.logger.info("\n[WARNING]  检测到键盘中断，正在关闭...")
+                self.logger.info("[WARNING] 检测到键盘中断，正在关闭...")
                 break
 
             except Exception as e:
@@ -387,12 +386,12 @@ class AlphaArenaBot:
 
             if should_display:
                 # 显示增强的账户信息
-                self.logger.info(f"\n[ACCOUNT] 账户状态:")
+                self.logger.info(f"[ACCOUNT] 账户状态:")
                 if avg_leverage > 0:
-                    self.logger.info(f"  余额: ${balance:,.2f}  |  持仓数: {len(positions)}  |  杠杆: {avg_leverage:.0f}x  |  保证金使用: {margin_usage_pct:.1f}%")
+                    self.logger.info(f"  余额: ${balance:,.2f} | 持仓数: {len(positions)} | 杠杆: {avg_leverage:.0f}x | 保证金使用: {margin_usage_pct:.1f}%")
                 else:
-                    self.logger.info(f"  余额: ${balance:,.2f}  |  持仓数: {len(positions)}  |  保证金使用: {margin_usage_pct:.1f}%")
-                self.logger.info(f"  未实现盈亏: ${unrealized_pnl:,.2f}  |  总价值: ${total_value:,.2f}  |  总收益率: {metrics['total_return_pct']:+.2f}%")
+                    self.logger.info(f"  余额: ${balance:,.2f} | 持仓数: {len(positions)} | 保证金使用: {margin_usage_pct:.1f}%")
+                self.logger.info(f"  未实现盈亏: ${unrealized_pnl:,.2f} | 总价值: ${total_value:,.2f} | 总收益率: {metrics['total_return_pct']:+.2f}%")
 
                 # 显示性能指标
                 if profit_factor > 0:
@@ -406,14 +405,9 @@ class AlphaArenaBot:
                     )
 
                     if liquidation_warnings:
-                        self.logger.warning(f"\n[WARNING]  检测到 {len(liquidation_warnings)} 个清算风险预警:")
+                        self.logger.warning(f"[WARNING] 检测到 {len(liquidation_warnings)} 个清算风险预警:")
                         for warning in liquidation_warnings:
-                            self.logger.warning(f"  {warning['message']}")
-                            self.logger.warning(
-                                f"    当前价: ${warning['current_price']:,.2f} | "
-                                f"清算价: ${warning['liquidation_price']:,.2f} | "
-                                f"距离: {warning['distance_pct']:.2f}%"
-                            )
+                            self.logger.warning(f"  {warning['message']} | 当前价: ${warning['current_price']:,.2f} | 清算价: ${warning['liquidation_price']:,.2f} | 距离: {warning['distance_pct']:.2f}%")
 
                 # 更新显示时间
                 self.last_account_display_time = current_time
@@ -445,11 +439,7 @@ class AlphaArenaBot:
                 market_data_latency_ms = int((time_module.time() - start_time) * 1000)
 
                 # 显示市场数据
-                self.logger.info(f"\n[ANALYZE] {symbol} 市场数据:")
-                self.logger.info(
-                    f"  价格: ${current_price:,.4f}  {price_change_24h:+.2f}%  |  "
-                    f"24h成交: ${quote_volume_24h:.1f}M"
-                )
+                self.logger.info(f"[ANALYZE] {symbol} | 价格: ${current_price:,.4f} ({price_change_24h:+.2f}%) | 24h成交: ${quote_volume_24h:.1f}M")
             except Exception as e:
                 self.logger.warning(f"  [WARNING] 获取市场数据失败: {e}")
                 # 继续执行，使用基本分析
@@ -494,9 +484,9 @@ class AlphaArenaBot:
 
                     # [OK] 完全信任AI决策，不设置信心阈值
                     if action in ['CLOSE', 'CLOSE_LONG', 'CLOSE_SHORT']:
-                        self.logger.info(f"  ✂️  AI决定平仓 {symbol}")
-                        self.logger.info(f"  [IDEA] 理由: {ai_decision.get('reasoning', '')}")
-                        self.logger.info(f"  [TARGET] 信心度: {ai_decision.get('confidence', 0)}%")
+                        reasoning = ai_decision.get('reasoning', '')
+                        confidence = ai_decision.get('confidence', 0)
+                        self.logger.info(f"✂️ [AI] {symbol} 决定平仓 (信心度: {confidence}%) | {reasoning[:80]}{'...' if len(reasoning) > 80 else ''}")
 
                         # 获取当前市场价格（平仓价）
                         try:
@@ -539,9 +529,9 @@ class AlphaArenaBot:
 
                     elif action == 'ROLL':
                         # [NEW] 执行浮盈滚仓策略
-                        self.logger.info(f"  🔄 AI决定执行滚仓策略 {symbol}")
-                        self.logger.info(f"  [IDEA] 理由: {ai_decision.get('reasoning', '')}")
-                        self.logger.info(f"  [TARGET] 信心度: {ai_decision.get('confidence', 0)}%")
+                        reasoning = ai_decision.get('reasoning', '')
+                        confidence = ai_decision.get('confidence', 0)
+                        self.logger.info(f"🔄 [AI] {symbol} 决定执行滚仓策略 (信心度: {confidence}%) | {reasoning[:80]}{'...' if len(reasoning) > 80 else ''}")
 
                         roll_result = self.execute_roll_strategy(
                             symbol=symbol,
@@ -555,8 +545,9 @@ class AlphaArenaBot:
                             self.logger.warning(f"  [WARNING] 滚仓策略执行失败: {roll_result.get('reason', '未知原因')}")
 
                     else:
-                        self.logger.info(f"  [OK] AI建议继续持有 {symbol} (信心度: {ai_decision.get('confidence', 0)}%)")
-                        self.logger.info(f"  [IDEA] 理由: {ai_decision.get('reasoning', '')}")
+                        reasoning = ai_decision.get('reasoning', '')
+                        confidence = ai_decision.get('confidence', 0)
+                        self.logger.info(f"[AI] {symbol} 建议继续持有 (信心度: {confidence}%) | {reasoning[:100]}{'...' if len(reasoning) > 100 else ''}")
                 else:
                     self.logger.error(f"  [ERROR] 持仓评估失败: {result.get('error')}")
 
@@ -593,12 +584,10 @@ class AlphaArenaBot:
 
                     self.performance.record_trade(trade_info)
 
-                    self.logger.info(f"\n[AI] DEEPSEEK CHAT V3.1 决策:")
-                    self.logger.info(f"  {narrative}")
+                    self.logger.info(f"[AI] {symbol} 决策: {action} (信心度: {ai_decision.get('confidence', 0)}%) | {narrative[:100]}{'...' if len(narrative) > 100 else ''}")
                 else:
                     # HOLD决策 - 显示叙述性说明
-                    self.logger.info(f"\n[AI] DEEPSEEK CHAT V3.1 决策:")
-                    self.logger.info(f"  {narrative}")
+                    self.logger.info(f"[AI] {symbol} 决策: {action} | {narrative[:100]}{'...' if len(narrative) > 100 else ''}")
 
             else:
                 error_msg = result.get('error', '未知错误')
@@ -749,7 +738,7 @@ class AlphaArenaBot:
             执行结果
         """
         try:
-            self.logger.info(f"\n🔄 [ROLL V2.0] 开始执行浮盈直接加仓策略: {symbol}")
+            self.logger.info(f"🔄 [ROLL V2.0] {symbol} 开始执行浮盈直接加仓策略")
 
             # [NEW V2.0] 0. 检查ROLL次数限制（最多6次）
             can_roll, reason, current_count = self.roll_tracker.can_roll(symbol)
@@ -915,7 +904,7 @@ class AlphaArenaBot:
 
     def _shutdown(self):
         """关闭机器人"""
-        self.logger.info("\n🛑 DeepSeek Ai Trade Bot 正在关闭...")
+        self.logger.info("🛑 [SHUTDOWN] DeepSeek Ai Trade Bot 正在关闭...")
 
         try:
             # 显示最终表现
@@ -946,9 +935,7 @@ class AlphaArenaBot:
             PROFIT_TARGET = 2.0  # 止盈目标: $2
 
             if unrealized_pnl >= PROFIT_TARGET:
-                self.logger.info(f"\n🎯 [FORCE-CLOSE] {symbol} 达到止盈目标!")
-                self.logger.info(f"   当前盈利: ${unrealized_pnl:.2f} (目标: ${PROFIT_TARGET})")
-                self.logger.info(f"   执行强制平仓...")
+                self.logger.info(f"🎯 [FORCE-CLOSE] {symbol} 达到止盈目标! 当前盈利: ${unrealized_pnl:.2f} (目标: ${PROFIT_TARGET}) | 执行强制平仓...")
 
                 # 执行平仓
                 close_result = self.binance.close_all_positions(symbol)
@@ -980,7 +967,7 @@ class AlphaArenaBot:
             position: 现有持仓信息
         """
         try:
-            self.logger.info(f"  [ROLL-CHECK] 检查 {symbol} 滚仓条件...")
+            self.logger.info(f"[ROLL-CHECK] {symbol} 检查滚仓条件...")
 
             # 计算当前盈亏百分比
             pos_amt = float(position.get('positionAmt', 0))
@@ -998,7 +985,7 @@ class AlphaArenaBot:
             else:  # 空头
                 pnl_pct = ((entry_price - mark_price) / entry_price) * 100
 
-            self.logger.info(f"  [ROLL-CHECK] {symbol} 当前盈亏: {pnl_pct:.2f}%, 阈值: {self.rolling_manager.profit_threshold_pct}%")
+            self.logger.info(f"[ROLL-CHECK] {symbol} 当前盈亏: {pnl_pct:.2f}% | 阈值: {self.rolling_manager.profit_threshold_pct}%")
 
             # 构建持仓信息
             pos_info = {
@@ -1013,8 +1000,7 @@ class AlphaArenaBot:
             should_roll, reason, roll_quantity = self.rolling_manager.should_roll_position(pos_info)
 
             if should_roll:
-                self.logger.info(f"\n🎯 [ROLL] {symbol} 触发滚仓条件!")
-                self.logger.info(f"   {reason}")
+                self.logger.info(f"🎯 [ROLL] {symbol} 触发滚仓条件! {reason}")
 
                 # 执行加仓
                 try:
@@ -1124,7 +1110,7 @@ class AlphaArenaBot:
                 except Exception as e:
                     self.logger.error(f"   ❌ 滚仓执行失败: {e}")
             else:
-                self.logger.info(f"  [ROLL-CHECK] {symbol} 不满足滚仓条件: {reason}")
+                self.logger.info(f"[ROLL-CHECK] {symbol} 不满足滚仓条件: {reason}")
 
         except Exception as e:
             self.logger.error(f"[ERROR] 滚仓检查失败: {e}")
