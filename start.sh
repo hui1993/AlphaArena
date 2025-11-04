@@ -85,10 +85,11 @@ print_success "日志目录已准备"
 
 # 步骤5: 检查并终止已运行的进程
 print_step "检查运行中的进程..."
-RUNNING_PIDS=$(pgrep -f "python.*alpha_arena_bot.py" 2>/dev/null)
 
-if [ -n "$RUNNING_PIDS" ]; then
-    print_warning "检测到运行中的进程 (PIDs: $RUNNING_PIDS)"
+# 检查并终止 Bot 进程
+RUNNING_BOT_PIDS=$(pgrep -f "python.*alpha_arena_bot.py" 2>/dev/null)
+if [ -n "$RUNNING_BOT_PIDS" ]; then
+    print_warning "检测到运行中的 Bot 进程 (PIDs: $RUNNING_BOT_PIDS)"
     echo "  正在终止旧进程..."
     
     # 优雅终止（SIGTERM）
@@ -104,13 +105,40 @@ if [ -n "$RUNNING_PIDS" ]; then
     
     # 最终验证
     if pgrep -f "python.*alpha_arena_bot.py" > /dev/null; then
-        print_error "无法终止进程，请手动检查"
+        print_error "无法终止 Bot 进程，请手动检查"
         exit 1
     else
-        print_success "旧进程已终止"
+        print_success "Bot 旧进程已终止"
     fi
 else
-    print_success "没有运行中的进程"
+    print_success "没有运行中的 Bot 进程"
+fi
+
+# 检查并终止 Web Dashboard 进程
+RUNNING_DASHBOARD_PIDS=$(pgrep -f "python.*web_dashboard.py" 2>/dev/null)
+if [ -n "$RUNNING_DASHBOARD_PIDS" ]; then
+    print_warning "检测到运行中的 Web Dashboard 进程 (PIDs: $RUNNING_DASHBOARD_PIDS)"
+    echo "  正在终止旧进程..."
+    
+    # 优雅终止（SIGTERM）
+    pkill -f "python.*web_dashboard.py" 2>/dev/null
+    sleep 2
+    
+    # 检查是否还有残留进程
+    if pgrep -f "python.*web_dashboard.py" > /dev/null; then
+        print_warning "仍有进程残留，强制终止..."
+        pkill -9 -f "python.*web_dashboard.py" 2>/dev/null
+        sleep 1
+    fi
+    
+    # 最终验证
+    if pgrep -f "python.*web_dashboard.py" > /dev/null; then
+        print_warning "无法完全终止 Web Dashboard 进程，但继续启动..."
+    else
+        print_success "Web Dashboard 旧进程已终止"
+    fi
+else
+    print_success "没有运行中的 Web Dashboard 进程"
 fi
 
 echo ""
@@ -175,4 +203,60 @@ else
         tail -n 20 "$LAUNCH_LOG"
     fi
     exit 1
+fi
+
+echo ""
+
+# 步骤7: 启动 Web Dashboard
+print_step "启动 Web Dashboard..."
+
+# 生成 Dashboard 日志文件名
+DASHBOARD_LOG="logs/web_dashboard_${LOG_DATE}.log"
+
+# 在启动日志中写入启动分隔符
+{
+    echo ""
+    echo "════════════════════════════════════════════════════════════════════════════════"
+    echo "🌐 启动 Web Dashboard - $(date '+%Y-%m-%d %H:%M:%S')"
+    echo "════════════════════════════════════════════════════════════════════════════════"
+    echo ""
+} >> "$DASHBOARD_LOG"
+
+# 使用 nohup 后台运行 Web Dashboard
+nohup python web_dashboard.py >> "$DASHBOARD_LOG" 2>&1 &
+DASHBOARD_PID=$!
+
+# 等待3秒让进程启动
+sleep 3
+
+# 验证进程是否成功启动
+if ps -p $DASHBOARD_PID > /dev/null 2>&1; then
+    print_separator
+    echo -e "${GREEN}✓ Web Dashboard 启动成功${NC}"
+    echo ""
+    echo -e "  ${CYAN}进程ID:${NC}   $DASHBOARD_PID"
+    echo -e "  ${CYAN}启动时间:${NC} $(date '+%Y-%m-%d %H:%M:%S')"
+    echo -e "  ${CYAN}访问地址:${NC} ${YELLOW}http://localhost:5002${NC}"
+    echo -e "  ${CYAN}日志文件:${NC} $DASHBOARD_LOG"
+    echo ""
+    print_separator
+    echo ""
+    echo -e "${BLUE}常用命令:${NC}"
+    echo ""
+    echo -e "  ${WHITE}查看 Dashboard 日志:${NC}"
+    echo -e "    ${CYAN}tail -f $DASHBOARD_LOG${NC}"
+    echo ""
+    echo -e "  ${WHITE}停止 Dashboard:${NC}"
+    echo -e "    ${CYAN}pkill -f 'python.*web_dashboard.py'${NC}"
+    echo ""
+else
+    print_warning "Web Dashboard 启动可能失败，请检查日志: $DASHBOARD_LOG"
+    if [ -f "$DASHBOARD_LOG" ]; then
+        echo ""
+        echo "最近的错误信息:"
+        tail -n 20 "$DASHBOARD_LOG"
+    fi
+    echo ""
+    echo -e "${YELLOW}⚠️  Bot 已启动，但 Dashboard 启动失败，可以稍后手动启动:${NC}"
+    echo -e "    ${CYAN}python web_dashboard.py${NC}"
 fi
