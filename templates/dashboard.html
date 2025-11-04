@@ -2126,16 +2126,23 @@
         }
 
         // Update chart
+        let chartInitialCapital = 20; // 默认值，将从API获取实际值
         function updateChart() {
             fetch('/api/chart')
                 .then(response => response.json())
                 .then(result => {
                     if (result.success) {
                         const data = result.data;
+                        const initialCapital = result.initial_capital || chartInitialCapital;
+                        
+                        // 更新初始资金（如果API返回了有效值）
+                        if (initialCapital > 0) {
+                            chartInitialCapital = initialCapital;
+                        }
 
                         if (data.length === 0) {
                             const now = new Date();
-                            data.push({ time: now.toISOString(), value: 20 });
+                            data.push({ time: now.toISOString(), value: chartInitialCapital });
                         }
 
                         const labels = data.map(d => {
@@ -2147,10 +2154,9 @@
                                 minute: '2-digit'
                             });
                         });
-                        const values = data.map(d => d.value);
+                        const values = data.map(d => d.value || chartInitialCapital);
 
-                        const initialCapital = 20;
-                        const baseline = new Array(values.length).fill(initialCapital);
+                        const baseline = new Array(values.length).fill(chartInitialCapital);
 
                         if (chart) {
                             chart.destroy();
@@ -2228,14 +2234,41 @@
                                         padding: 15,
                                         displayColors: true,
                                         callbacks: {
+                                            title: function(context) {
+                                                // 显示完整的时间信息
+                                                const index = context[0].dataIndex;
+                                                if (data[index] && data[index].time) {
+                                                    const date = new Date(data[index].time);
+                                                    return date.toLocaleString('zh-CN', {
+                                                        year: 'numeric',
+                                                        month: '2-digit',
+                                                        day: '2-digit',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit',
+                                                        second: '2-digit'
+                                                    });
+                                                }
+                                                return labels[context[0].dataIndex] || '';
+                                            },
                                             label: function(context) {
                                                 const label = context.dataset.label || '';
                                                 const value = context.parsed.y;
-                                                const diff = value - initialCapital;
-                                                const diffPct = ((diff / initialCapital) * 100).toFixed(2);
-                                                const sign = diff >= 0 ? '+' : '';
-                                                return label + ': $' + value.toFixed(2) +
-                                                       ' (' + sign + diffPct + '%)';
+                                                
+                                                // 基线（初始资金）只显示数值，不显示百分比
+                                                if (label === '初始资金') {
+                                                    return label + ': $' + value.toFixed(2);
+                                                }
+                                                
+                                                // 账户价值显示数值和百分比变化
+                                                if (chartInitialCapital > 0) {
+                                                    const diff = value - chartInitialCapital;
+                                                    const diffPct = ((diff / chartInitialCapital) * 100).toFixed(2);
+                                                    const sign = diff >= 0 ? '+' : '';
+                                                    return label + ': $' + value.toFixed(2) +
+                                                           ' (' + sign + diffPct + '%)';
+                                                } else {
+                                                    return label + ': $' + value.toFixed(2);
+                                                }
                                             }
                                         }
                                     }
@@ -2285,14 +2318,40 @@
 
         function updateTrades() {
             fetch('/api/trades')
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(result => {
                     if (result.success) {
+                        const prevTradeCount = allTrades.length;
                         allTrades = result.data.reverse();
-                        renderTradesPage(currentPage);
+                        // 如果有新交易且用户在第一页，自动刷新显示
+                        if (allTrades.length > prevTradeCount && currentPage === 1) {
+                            renderTradesPage(1);
+                        } else {
+                            renderTradesPage(currentPage);
+                        }
+                    } else {
+                        console.warn('Trades API返回失败:', result.error);
+                        const tbody = document.getElementById('trades-tbody');
+                        if (tbody && tbody.children.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="8" class="loading">加载失败，请刷新页面</td></tr>';
+                        }
                     }
                 })
-                .catch(error => console.error('Trades update error:', error));
+                .catch(error => {
+                    console.error('Trades update error:', error);
+                    const tbody = document.getElementById('trades-tbody');
+                    if (tbody) {
+                        const existingContent = tbody.innerHTML;
+                        if (!existingContent.includes('加载失败')) {
+                            tbody.innerHTML = '<tr><td colspan="8" class="loading" style="color: var(--danger-light);">⚠️ 交易记录加载失败，请检查网络连接</td></tr>';
+                        }
+                    }
+                });
         }
 
         function renderTradesPage(page) {
@@ -2673,18 +2732,220 @@
             }
         });
 
+        socket.on('trades_update', function(result) {
+            if (result.success) {
+                const prevTradeCount = allTrades.length;
+                const newTrades = result.data.reverse();
+                
+                // 检查是否有新交易
+                const hasNewTrades = newTrades.length > prevTradeCount;
+                
+                allTrades = newTrades;
+                
+                // 如果有新交易且用户在第一页，自动刷新显示最新交易
+                if (hasNewTrades && currentPage === 1) {
+                    renderTradesPage(1);
+                } else {
+                    // 重新渲染当前页（保持用户的翻页位置）
+                    renderTradesPage(currentPage);
+                }
+            }
+        });
+
+        socket.on('chart_update', function(result) {
+            if (result.success) {
+                const data = result.data;
+                const initialCapital = result.initial_capital || chartInitialCapital;
+                
+                // 更新初始资金
+                if (initialCapital > 0) {
+                    chartInitialCapital = initialCapital;
+                }
+
+                if (data.length === 0) {
+                    const now = new Date();
+                    data.push({ time: now.toISOString(), value: chartInitialCapital });
+                }
+
+                const labels = data.map(d => {
+                    const date = new Date(d.time);
+                    return date.toLocaleTimeString('zh-CN', {
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                });
+                const values = data.map(d => d.value || chartInitialCapital);
+
+                const baseline = new Array(values.length).fill(chartInitialCapital);
+
+                if (chart) {
+                    chart.destroy();
+                }
+
+                const ctx = document.getElementById('performanceChart').getContext('2d');
+                const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                gradient.addColorStop(0, 'rgba(45, 212, 191, 0.3)');
+                gradient.addColorStop(1, 'rgba(45, 212, 191, 0.0)');
+
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: '初始资金',
+                                data: baseline,
+                                borderColor: 'rgba(160, 160, 184, 0.4)',
+                                backgroundColor: 'transparent',
+                                borderWidth: 2,
+                                borderDash: [5, 5],
+                                tension: 0,
+                                fill: false,
+                                pointRadius: 0,
+                                pointHoverRadius: 0
+                            },
+                            {
+                                label: 'DeepSeek V3 表现',
+                                data: values,
+                                borderColor: '#2DD4BF',
+                                backgroundColor: gradient,
+                                borderWidth: 3,
+                                tension: 0.4,
+                                fill: true,
+                                pointRadius: 0,
+                                pointHoverRadius: 8,
+                                pointBackgroundColor: '#2DD4BF',
+                                pointBorderColor: '#0A0A0F',
+                                pointBorderWidth: 3
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        interaction: {
+                            intersect: false,
+                            mode: 'index'
+                        },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                                labels: {
+                                    color: '#A8B0C8',
+                                    font: {
+                                        family: 'Inter',
+                                        size: 12,
+                                        weight: '600'
+                                    },
+                                    padding: 15,
+                                    usePointStyle: true,
+                                    pointStyle: 'line'
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(10, 10, 15, 0.95)',
+                                titleColor: '#2DD4BF',
+                                bodyColor: '#FFFFFF',
+                                borderColor: '#2DD4BF',
+                                borderWidth: 1.5,
+                                padding: 15,
+                                displayColors: true,
+                                callbacks: {
+                                    title: function(context) {
+                                        // 显示完整的时间信息
+                                        const index = context[0].dataIndex;
+                                        if (data[index] && data[index].time) {
+                                            const date = new Date(data[index].time);
+                                            return date.toLocaleString('zh-CN', {
+                                                year: 'numeric',
+                                                month: '2-digit',
+                                                day: '2-digit',
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                                second: '2-digit'
+                                            });
+                                        }
+                                        return labels[context[0].dataIndex] || '';
+                                    },
+                                    label: function(context) {
+                                        const label = context.dataset.label || '';
+                                        const value = context.parsed.y;
+                                        
+                                        // 基线（初始资金）只显示数值，不显示百分比
+                                        if (label === '初始资金') {
+                                            return label + ': $' + value.toFixed(2);
+                                        }
+                                        
+                                        // 账户价值显示数值和百分比变化
+                                        if (chartInitialCapital > 0) {
+                                            const diff = value - chartInitialCapital;
+                                            const diffPct = ((diff / chartInitialCapital) * 100).toFixed(2);
+                                            const sign = diff >= 0 ? '+' : '';
+                                            return label + ': $' + value.toFixed(2) +
+                                                   ' (' + sign + diffPct + '%)';
+                                        } else {
+                                            return label + ': $' + value.toFixed(2);
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.05)',
+                                    drawBorder: false
+                                },
+                                ticks: {
+                                    color: '#A8B0C8',
+                                    maxTicksLimit: 15,
+                                    font: {
+                                        size: 11
+                                    }
+                                }
+                            },
+                            y: {
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.08)',
+                                    drawBorder: false
+                                },
+                                ticks: {
+                                    color: '#A8B0C8',
+                                    callback: function(value) {
+                                        return '$' + value.toFixed(0);
+                                    },
+                                    font: {
+                                        size: 12,
+                                        family: 'JetBrains Mono'
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        });
+
         // Initial load
         updateChart();
         updateTrades();
         updateDecisions();
 
+        // 定期更新图表（作为WebSocket的备用方案）
+        // WebSocket会实时推送，这个定时器作为兜底
         setInterval(() => {
             updateChart();
-        }, 10000);
+        }, 10000); // 改为10秒，因为WebSocket会实时推送
 
+        // 定期更新交易记录（作为WebSocket的备用方案）
+        // WebSocket会实时推送，这个定时器作为兜底
         setInterval(() => {
             updateTrades();
-        }, 5000);
+        }, 10000); // 改为10秒，因为WebSocket会实时推送
 
         setInterval(() => {
             updateDecisions();
@@ -2781,9 +3042,6 @@
 
             previousPricesWS[symbol] = price;
         }
-
-        // 启动Binance WebSocket连接
-        connectBinanceWebSocket();
 
         console.log('%c⚡ ALPHA ARENA DASHBOARD', 'font-size: 20px; font-weight: bold; color: #2DD4BF;');
         console.log('%cDeepSeek-V3 UltraThink AI Trading System', 'font-size: 14px; color: #8B7FD8;');

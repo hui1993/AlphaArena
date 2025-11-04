@@ -176,7 +176,20 @@ def get_trades():
     except FileNotFoundError:
         return jsonify({
             'success': False,
-            'error': '数据文件不存在'
+            'error': '数据文件不存在',
+            'data': []
+        })
+    except json.JSONDecodeError as e:
+        return jsonify({
+            'success': False,
+            'error': f'JSON解析错误: {str(e)}',
+            'data': []
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'获取交易记录失败: {str(e)}',
+            'data': []
         })
 
 
@@ -184,21 +197,46 @@ def get_trades():
 def get_chart_data():
     """获取图表数据 API"""
     try:
+        # 初始化客户端
+        init_clients()
+        
         with open('performance_data.json', 'r') as f:
             data = json.load(f)
 
         portfolio_values = data.get('portfolio_values', [])
+        initial_capital = data.get('initial_capital', 0.0)
+        
+        # 如果初始资金为0，尝试从Binance获取当前余额作为初始资金
+        if initial_capital == 0.0:
+            try:
+                # 获取当前账户价值作为初始资金参考
+                account_info = binance_client.get_futures_account_info()
+                total_wallet_balance = float(account_info.get('totalWalletBalance', 0))
+                if total_wallet_balance > 0:
+                    initial_capital = total_wallet_balance
+            except Exception:
+                pass
 
-        # 返回最近 500 个数据点
+        # 返回最近 500 个数据点和初始资金
         return jsonify({
             'success': True,
-            'data': portfolio_values[-500:]
+            'data': portfolio_values[-500:],
+            'initial_capital': initial_capital
         })
 
     except FileNotFoundError:
         return jsonify({
             'success': False,
-            'error': '数据文件不存在'
+            'error': '数据文件不存在',
+            'data': [],
+            'initial_capital': 0
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'获取图表数据失败: {str(e)}',
+            'data': [],
+            'initial_capital': 0
         })
 
 
@@ -498,6 +536,42 @@ def background_push_thread():
                 'data': positions_list,
                 'timestamp': datetime.now().timestamp()
             })
+
+            # 推送交易记录数据
+            try:
+                with open('performance_data.json', 'r') as f:
+                    data = json.load(f)
+                trades = data.get('trades', [])
+                
+                socketio.emit('trades_update', {
+                    'success': True,
+                    'data': trades[-200:],  # 最近200笔交易
+                    'timestamp': datetime.now().timestamp()
+                })
+            except Exception as trades_error:
+                # 交易记录读取失败不影响其他数据推送
+                pass
+
+            # 推送图表数据
+            try:
+                with open('performance_data.json', 'r') as f:
+                    chart_data = json.load(f)
+                portfolio_values = chart_data.get('portfolio_values', [])
+                initial_capital = chart_data.get('initial_capital', 0.0)
+                
+                # 如果初始资金为0，使用当前账户价值
+                if initial_capital == 0.0:
+                    initial_capital = account_value
+                
+                socketio.emit('chart_update', {
+                    'success': True,
+                    'data': portfolio_values[-500:],  # 最近500个数据点
+                    'initial_capital': initial_capital,
+                    'timestamp': datetime.now().timestamp()
+                })
+            except Exception as chart_error:
+                # 图表数据读取失败不影响其他数据推送
+                pass
 
         except Exception as e:
             print(f"[WARNING]  推送数据错误: {e}")
