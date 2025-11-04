@@ -62,13 +62,13 @@ fi
 PYTHON_VERSION=$(python --version 2>&1 | awk '{print $2}')
 print_success "Python 已安装 (版本: $PYTHON_VERSION)"
 
-# 步骤2: 检查依赖
-print_step "检查并安装依赖..."
-if pip install -r requirements.txt -q; then
-    print_success "依赖检查完成"
-else
-    print_warning "依赖安装可能有问题，但继续启动..."
-fi
+# 步骤2: 检查依赖 (已跳过)
+# print_step "检查并安装依赖..."
+# if pip install -r requirements.txt -q; then
+#     print_success "依赖检查完成"
+# else
+#     print_warning "依赖安装可能有问题，但继续启动..."
+# fi
 
 # 步骤3: 检查配置文件
 print_step "检查配置文件..."
