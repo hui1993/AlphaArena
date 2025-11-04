@@ -1893,26 +1893,52 @@
                     return;
                 }
 
+                // 显示最近2小时的决策，或者至少显示最近20条
                 const now = new Date();
-                const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+                const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
 
                 this.decisions = decisions.filter(decision => {
                     if (!decision.time) return false;
                     try {
-                        const decisionTime = new Date(decision.time.replace(',', '.'));
-                        return decisionTime >= thirtyMinutesAgo;
+                        // 处理ISO格式时间戳
+                        let decisionTime;
+                        if (decision.time.includes('T')) {
+                            // ISO格式: 2025-11-04T17:38:48.682412
+                            decisionTime = new Date(decision.time);
+                        } else {
+                            // 其他格式，尝试替换逗号
+                            decisionTime = new Date(decision.time.replace(',', '.'));
+                        }
+                        
+                        // 如果解析失败，保留该决策（至少显示最近20条）
+                        if (isNaN(decisionTime.getTime())) {
+                            return true;
+                        }
+                        
+                        // 显示最近2小时内的决策，或者如果总数少于20条则全部显示
+                        return decisionTime >= twoHoursAgo || decisions.length <= 20;
                     } catch (e) {
+                        // 解析错误时保留该决策
                         return true;
                     }
                 }).sort((a, b) => {
                     try {
-                        const timeA = new Date(a.time.replace(',', '.'));
-                        const timeB = new Date(b.time.replace(',', '.'));
+                        let timeA, timeB;
+                        if (a.time && a.time.includes('T')) {
+                            timeA = new Date(a.time);
+                        } else {
+                            timeA = new Date(a.time?.replace(',', '.') || 0);
+                        }
+                        if (b.time && b.time.includes('T')) {
+                            timeB = new Date(b.time);
+                        } else {
+                            timeB = new Date(b.time?.replace(',', '.') || 0);
+                        }
                         return timeB - timeA;
                     } catch (e) {
                         return 0;
                     }
-                });
+                }).slice(0, 20); // 最多显示20条
             },
 
             updateTrades(trades) {
@@ -2433,7 +2459,7 @@
                         const container = document.getElementById('decisions-container');
 
                         if (decisions.length === 0) {
-                            container.innerHTML = '<div class="loading">最近30分钟无AI决策...</div>';
+                            container.innerHTML = '<div class="loading">最近2小时无AI决策...</div>';
                             return;
                         }
 

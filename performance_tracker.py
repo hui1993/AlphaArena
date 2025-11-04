@@ -34,7 +34,20 @@ class PerformanceTracker:
         if os.path.exists(self.data_file):
             try:
                 with open(self.data_file, 'r') as f:
-                    return json.load(f)
+                    loaded_data = json.load(f)
+                    # 确保数据结构完整
+                    if 'portfolio_values' not in loaded_data:
+                        loaded_data['portfolio_values'] = []
+                    if 'trades' not in loaded_data:
+                        loaded_data['trades'] = []
+                    if 'daily_snapshots' not in loaded_data:
+                        loaded_data['daily_snapshots'] = []
+                    if 'metrics' not in loaded_data:
+                        loaded_data['metrics'] = {}
+                    # 如果初始资金为0，使用传入的值
+                    if loaded_data.get('initial_capital', 0) == 0.0 and self.initial_capital > 0:
+                        loaded_data['initial_capital'] = self.initial_capital
+                    return loaded_data
             except Exception as e:
                 self.logger.error(f"加载数据失败: {e}")
 
@@ -51,10 +64,25 @@ class PerformanceTracker:
     def _save_data(self):
         """保存数据"""
         try:
-            with open(self.data_file, 'w') as f:
-                json.dump(self.data, f, indent=2)
+            # 使用临时文件确保原子性写入
+            import tempfile
+            import shutil
+            
+            temp_file = self.data_file + '.tmp'
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                json.dump(self.data, f, indent=2, ensure_ascii=False)
+            
+            # 原子性替换原文件
+            shutil.move(temp_file, self.data_file)
         except Exception as e:
             self.logger.error(f"保存数据失败: {e}")
+            # 如果临时文件存在，尝试清理
+            try:
+                if os.path.exists(self.data_file + '.tmp'):
+                    os.remove(self.data_file + '.tmp')
+            except:
+                pass
+            raise
 
     def record_trade(self, trade: Dict):
         """
@@ -150,7 +178,7 @@ class PerformanceTracker:
         snapshot = {
             'time': datetime.now().isoformat(),
             'value': current_value,
-            'return_pct': ((current_value - self.initial_capital) / self.initial_capital) * 100
+            'return_pct': ((current_value - self.initial_capital) / self.initial_capital) * 100 if self.initial_capital > 0 else 0
         }
 
         self.data['portfolio_values'].append(snapshot)
@@ -159,7 +187,15 @@ class PerformanceTracker:
         if len(self.data['portfolio_values']) > 10000:
             self.data['portfolio_values'] = self.data['portfolio_values'][-10000:]
 
-        self._save_data()
+        # 保存数据
+        try:
+            self._save_data()
+            # 记录保存成功（每10次记录一次，避免日志过多）
+            if len(self.data['portfolio_values']) % 10 == 0:
+                self.logger.debug(f"已保存账户价值数据，当前共 {len(self.data['portfolio_values'])} 个数据点")
+        except Exception as e:
+            self.logger.error(f"保存账户价值数据失败: {e}")
+            raise
 
     def calculate_metrics(self, current_balance: float, positions: List[Dict]) -> Dict:
         """
