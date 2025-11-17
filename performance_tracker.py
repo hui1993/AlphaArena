@@ -47,6 +47,13 @@ class PerformanceTracker:
                     # 如果初始资金为0，使用传入的值
                     if loaded_data.get('initial_capital', 0) == 0.0 and self.initial_capital > 0:
                         loaded_data['initial_capital'] = self.initial_capital
+                    
+                    # 清理过大的trades数组，防止内存溢出
+                    if len(loaded_data.get('trades', [])) > 10000:
+                        old_count = len(loaded_data['trades'])
+                        loaded_data['trades'] = loaded_data['trades'][-10000:]
+                        self.logger.info(f"清理旧交易记录: {old_count} -> {len(loaded_data['trades'])} 条")
+                    
                     return loaded_data
             except Exception as e:
                 self.logger.error(f"加载数据失败: {e}")
@@ -106,6 +113,12 @@ class PerformanceTracker:
         }
 
         self.data['trades'].append(trade_record)
+        
+        # 限制trades数组大小，防止内存溢出（只保留最近10000条）
+        if len(self.data['trades']) > 10000:
+            self.data['trades'] = self.data['trades'][-10000:]
+            self.logger.debug(f"已清理旧交易记录，保留最近10000条")
+        
         self._save_data()
 
     def record_trade_close(self, symbol: str, close_price: float, position_info: Dict):
