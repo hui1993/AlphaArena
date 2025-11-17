@@ -158,6 +158,35 @@ class AlphaArenaBot:
             # 回退到配置文件值
             pass
 
+        # [NEW] 启动时自动将合约账户中的所有合约纳入管理
+        try:
+            positions = self.binance.get_futures_positions()
+            account_symbols = set()
+            
+            for pos in positions:
+                position_amt = float(pos.get('positionAmt', 0))
+                if abs(position_amt) > 0:
+                    symbol = pos.get('symbol', '')
+                    if symbol:
+                        account_symbols.add(symbol)
+            
+            if account_symbols:
+                # 将账户中所有有持仓的交易对都加入到管理列表
+                added_count = 0
+                for symbol in account_symbols:
+                    if symbol not in self.trading_symbols and symbol not in self.temp_trading_symbols:
+                        self.temp_trading_symbols.append(symbol)
+                        added_count += 1
+                
+                if added_count > 0:
+                    all_symbols = self.trading_symbols + self.temp_trading_symbols
+                    self.logger.info(f"[INIT] 检测到合约账户中有 {len(account_symbols)} 个持仓，已将 {added_count} 个新交易对纳入管理")
+                    self.logger.info(f"[INIT] 当前管理交易对 ({len(all_symbols)} 个): {', '.join(sorted(all_symbols))}")
+                else:
+                    self.logger.info(f"[INIT] 合约账户中的 {len(account_symbols)} 个持仓已在管理列表中")
+        except Exception as e:
+            self.logger.warning(f"[WARNING] 检查合约账户持仓失败: {e}，继续使用配置的交易对")
+
         # 市场分析器
         self.market_analyzer = MarketAnalyzer(self.binance)
 
@@ -254,36 +283,39 @@ class AlphaArenaBot:
         self.logger.info("=" * 60)
         self.logger.info("[SUCCESS] DeepSeek Ai Trade Bot 启动")
         self.logger.info(f"[MONEY] 账户余额: ${self.initial_capital:,.2f}")
-        self.logger.info(f"[ANALYZE] 交易对: {', '.join(self.trading_symbols)}")
+        
+        # 显示所有管理的交易对（包括配置的和临时添加的）
+        all_symbols = self.trading_symbols + self.temp_trading_symbols
+        self.logger.info(f"[ANALYZE] 交易对 ({len(all_symbols)} 个): {', '.join(sorted(all_symbols))}")
+        if self.temp_trading_symbols:
+            self.logger.info(f"[NOTE] 其中 {len(self.temp_trading_symbols)} 个为账户持仓自动纳入: {', '.join(sorted(self.temp_trading_symbols))}")
+        
         self.logger.info(f"[TIME]  交易间隔: {self.trading_interval}秒")
         self.logger.info(f"[AI] AI 模型: DeepSeek Chat V3.1")
         self.logger.info("=" * 60)
 
-        # 检查不在TRADING_SYMBOLS中的持仓，并添加到临时交易对列表
-        untracked_positions = self._check_untracked_positions()
-        if untracked_positions:
-            self.logger.info(f"[INFO] 检测到 {len(untracked_positions)} 个不在交易对列表中的持仓，添加到临时管理:")
-            
-            added_symbols = []
-            for pos in untracked_positions:
-                symbol = pos['symbol']
-                # 添加到临时交易对列表（不是配置的交易对列表）
-                if symbol not in self.trading_symbols and symbol not in self.temp_trading_symbols:
-                    self.temp_trading_symbols.append(symbol)
-                    added_symbols.append(symbol)
-                    side = "LONG" if pos['position_amt'] > 0 else "SHORT"
-                    pnl_sign = "+" if pos['unrealized_pnl'] >= 0 else ""
+        # 显示当前持仓详情（已在_init_components中纳入管理，这里只显示详情）
+        try:
+            positions = self.binance.get_active_positions()
+            if positions:
+                self.logger.info(f"[POSITIONS] 当前持仓 ({len(positions)} 个):")
+                for pos in positions:
+                    symbol = pos.get('symbol', '')
+                    position_amt = float(pos.get('positionAmt', 0))
+                    unrealized_pnl = float(pos.get('unRealizedProfit', 0))
+                    entry_price = float(pos.get('entryPrice', 0))
+                    mark_price = float(pos.get('markPrice', 0))
+                    side = "LONG" if position_amt > 0 else "SHORT"
+                    pnl_sign = "+" if unrealized_pnl >= 0 else ""
+                    pnl_pct = ((mark_price - entry_price) / entry_price * 100) if entry_price > 0 else 0
                     self.logger.info(
                         f"  ✓ {symbol:12s} | {side:5s} | "
-                        f"数量: {abs(pos['position_amt']):.3f} | "
-                        f"盈亏: {pnl_sign}${pos['unrealized_pnl']:.2f} ({pnl_sign}{pos['pnl_pct']:.2f}%)"
+                        f"数量: {abs(position_amt):.3f} | "
+                        f"入场: ${entry_price:.4f} | 当前: ${mark_price:.4f} | "
+                        f"盈亏: {pnl_sign}${unrealized_pnl:.2f} ({pnl_sign}{pnl_pct:.2f}%)"
                     )
-            
-            if added_symbols:
-                all_symbols = self.trading_symbols + self.temp_trading_symbols
-                self.logger.info(f"[OK] 已添加 {len(added_symbols)} 个临时交易对: {', '.join(added_symbols)}")
-                self.logger.info(f"[OK] 当前管理交易对 ({len(all_symbols)} 个): {', '.join(all_symbols)}")
-                self.logger.info("[NOTE] 临时交易对会在平仓后自动移除，不会修改.env配置文件")
+        except Exception as e:
+            self.logger.warning(f"[WARNING] 获取持仓详情失败: {e}")
 
         cycle_count = 0
 

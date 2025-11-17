@@ -289,12 +289,12 @@ def get_system_status():
 
 @app.route('/api/positions')
 def get_positions():
-    """获取当前持仓 API - 实时从 Binance 获取"""
+    """获取当前持仓 API - 实时从 Binance 获取所有合约持仓（包括不在配置中的）"""
     try:
         # 初始化客户端
         init_clients()
 
-        # 直接从 Binance 获取实时持仓数据
+        # 直接从 Binance 获取所有合约持仓数据（包括所有交易对，不仅仅是配置的交易对）
         raw_positions = binance_client.get_futures_positions()
 
         positions_list = []
@@ -302,7 +302,7 @@ def get_positions():
         for pos in raw_positions:
             position_amt = float(pos.get('positionAmt', 0))
 
-            # 只返回非零持仓
+            # 只返回非零持仓（显示所有有持仓的合约，包括不在TRADING_SYMBOLS中的）
             if position_amt != 0:
                 symbol = pos['symbol']
                 entry_price = float(pos.get('entryPrice', 0))
@@ -499,12 +499,13 @@ def background_push_thread():
                 }
             })
 
-            # 推送持仓数据
+            # 推送持仓数据（包括所有合约，不仅仅是配置的交易对）
             raw_positions = binance_client.get_futures_positions()
             positions_list = []
 
             for pos in raw_positions:
                 position_amt = float(pos.get('positionAmt', 0))
+                # 只推送非零持仓（显示所有有持仓的合约）
                 if position_amt != 0:
                     symbol = pos['symbol']
                     entry_price = float(pos.get('entryPrice', 0))
