@@ -291,7 +291,7 @@ class AlphaArenaBot:
             self.logger.info(f"[NOTE] 其中 {len(self.temp_trading_symbols)} 个为账户持仓自动纳入: {', '.join(sorted(self.temp_trading_symbols))}")
         
         self.logger.info(f"[TIME]  交易间隔: {self.trading_interval}秒")
-        self.logger.info(f"[AI] AI 模型: DeepSeek Chat V3.1")
+        self.logger.info(f"[AI] AI 模型: DeepSeek Chat")
         self.logger.info("=" * 60)
 
         # 显示当前持仓详情（已在_init_components中纳入管理，这里只显示详情）

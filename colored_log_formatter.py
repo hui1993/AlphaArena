@@ -231,7 +231,7 @@ if __name__ == "__main__":
     test_logger.info("[MONEY] 账户余额: $21,335.67 (从Binance API实时获取)")
     test_logger.info("[ANALYZE] 交易对: ETHUSDT, SOLUSDT, BNBUSDT")
     test_logger.info("[TIME] 交易间隔: 120秒")
-    test_logger.info("[AI] AI 模型: DeepSeek Chat V3.1")
+    test_logger.info("[AI] AI 模型: DeepSeek Chat")
     test_logger.info("")
     test_logger.info("[LOOP] 开始第 1 轮交易循环")
     test_logger.info("[ACCOUNT] 账户状态:")
