@@ -432,7 +432,9 @@ class AITradingEngine:
         action = decision['action']
         # [OK] 完全由DeepSeek决定！所有参数都由AI自主决策
         # fallback值仅在AI未返回时使用（理论上不应该发生）
-        position_size_pct = min(decision.get('position_size', 1), max_position_pct)  # AI未返回时用最保守的1%
+        # 处理 None 值：如果键存在但值为 None，使用默认值
+        position_size_raw = decision.get('position_size')
+        position_size_pct = min(position_size_raw if position_size_raw is not None else 1, max_position_pct)  # AI未返回时用最保守的1%
 
         # 杠杆：由AI自主决定，不设默认值
         leverage = decision.get('leverage')
@@ -452,8 +454,12 @@ class AITradingEngine:
             leverage = 1
         # 如果杠杆在1-10倍之间，使用AI建议的值，不强制调整
 
-        stop_loss_pct = decision.get('stop_loss_pct', 1) / 100  # AI未返回时最保守1%止损
-        take_profit_pct = decision.get('take_profit_pct', 2) / 100  # AI未返回时最保守2%止盈
+        # 处理 None 值：如果键存在但值为 None，使用默认值
+        stop_loss_pct_raw = decision.get('stop_loss_pct')
+        stop_loss_pct = (stop_loss_pct_raw if stop_loss_pct_raw is not None else 1) / 100  # AI未返回时最保守1%止损
+        
+        take_profit_pct_raw = decision.get('take_profit_pct')
+        take_profit_pct = (take_profit_pct_raw if take_profit_pct_raw is not None else 2) / 100  # AI未返回时最保守2%止盈
 
         # 获取账户余额
         balance = self.binance.get_futures_usdt_balance()
