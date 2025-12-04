@@ -75,18 +75,28 @@ class PerformanceTracker:
             import tempfile
             import shutil
             
-            temp_file = self.data_file + '.tmp'
+            # 确保使用绝对路径，并确保目录存在
+            data_file_path = os.path.abspath(self.data_file)
+            data_dir = os.path.dirname(data_file_path)
+            
+            # 如果目录不存在，创建它
+            if data_dir and not os.path.exists(data_dir):
+                os.makedirs(data_dir, exist_ok=True)
+            
+            temp_file = data_file_path + '.tmp'
             with open(temp_file, 'w', encoding='utf-8') as f:
                 json.dump(self.data, f, indent=2, ensure_ascii=False)
             
             # 原子性替换原文件
-            shutil.move(temp_file, self.data_file)
+            shutil.move(temp_file, data_file_path)
         except Exception as e:
             self.logger.error(f"保存数据失败: {e}")
             # 如果临时文件存在，尝试清理
             try:
-                if os.path.exists(self.data_file + '.tmp'):
-                    os.remove(self.data_file + '.tmp')
+                data_file_path = os.path.abspath(self.data_file)
+                temp_file = data_file_path + '.tmp'
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
             except:
                 pass
             raise
