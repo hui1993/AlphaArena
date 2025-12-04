@@ -9,6 +9,7 @@ import logging
 import time
 import pandas as pd
 import os
+import math
 
 from deepseek_client import DeepSeekClient
 from binance_client import BinanceClient
@@ -610,6 +611,28 @@ class AITradingEngine:
                 self.logger.warning(f"{symbol} 计算数量为0，账户太小无法交易")
                 return {'success': False, 'error': '账户余额太小，无法满足最低交易量'}
 
+            # 🔧 检查并确保名义价值满足币安最小要求（$20）
+            actual_notional = quantity * current_price
+            if actual_notional < min_notional:
+                # 计算需要的最小数量（向上取整到精度要求）
+                required_quantity = min_notional / current_price
+                # 向上取整到精度要求
+                if 'BTC' in symbol or 'ETH' in symbol:
+                    required_quantity = math.ceil(required_quantity * 1000) / 1000  # 向上取整到0.001
+                elif 'BNB' in symbol or 'SOL' in symbol:
+                    required_quantity = math.ceil(required_quantity * 10) / 10  # 向上取整到0.1
+                elif 'DOGE' in symbol:
+                    required_quantity = math.ceil(required_quantity)  # 向上取整到整数
+                else:
+                    required_quantity = math.ceil(required_quantity * 10) / 10  # 默认向上取整到0.1
+                
+                quantity = required_quantity
+                adjusted_notional = quantity * current_price
+                
+                self.logger.warning(f"[FIX] [{symbol}] 名义价值不足，已调整: "
+                                   f"数量 {raw_quantity:.6f} → {quantity:.6f}, "
+                                   f"名义价值 ${actual_notional:.2f} → ${adjusted_notional:.2f}")
+
             # 计算止损止盈价格（四舍五入到2位小数，USDT精度要求）
             stop_loss = round(current_price * (1 - stop_loss_pct), 2)
             take_profit = round(current_price * (1 + take_profit_pct), 2)
@@ -727,6 +750,28 @@ class AITradingEngine:
             if quantity == 0:
                 self.logger.warning(f"{symbol} 计算数量为0，账户太小无法交易")
                 return {'success': False, 'error': '账户余额太小，无法满足最低交易量'}
+
+            # 🔧 检查并确保名义价值满足币安最小要求（$20）
+            actual_notional = quantity * current_price
+            if actual_notional < min_notional:
+                # 计算需要的最小数量（向上取整到精度要求）
+                required_quantity = min_notional / current_price
+                # 向上取整到精度要求
+                if 'BTC' in symbol or 'ETH' in symbol:
+                    required_quantity = math.ceil(required_quantity * 1000) / 1000  # 向上取整到0.001
+                elif 'BNB' in symbol or 'SOL' in symbol:
+                    required_quantity = math.ceil(required_quantity * 10) / 10  # 向上取整到0.1
+                elif 'DOGE' in symbol:
+                    required_quantity = math.ceil(required_quantity)  # 向上取整到整数
+                else:
+                    required_quantity = math.ceil(required_quantity * 10) / 10  # 默认向上取整到0.1
+                
+                quantity = required_quantity
+                adjusted_notional = quantity * current_price
+                
+                self.logger.warning(f"[FIX] [{symbol}] 名义价值不足，已调整: "
+                                   f"数量 {raw_quantity:.6f} → {quantity:.6f}, "
+                                   f"名义价值 ${actual_notional:.2f} → ${adjusted_notional:.2f}")
 
             # 计算止损止盈价格（四舍五入到2位小数，USDT精度要求）
             stop_loss = round(current_price * (1 + stop_loss_pct), 2)
