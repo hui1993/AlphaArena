@@ -606,15 +606,10 @@ class AITradingEngine:
             else:
                 quantity = round(raw_quantity, 1)  # 默认: 0.1 (大多数山寨币)
 
-            # 确保不为0（小账户可能出现）
-            if quantity == 0:
-                self.logger.warning(f"{symbol} 计算数量为0，账户太小无法交易")
-                return {'success': False, 'error': '账户余额太小，无法满足最低交易量'}
-
-            # 🔧 检查并确保名义价值满足币安最小要求（$20）
+            # 🔧 如果计算数量为0或名义价值不足，尝试使用最小交易量
             actual_notional = quantity * current_price
-            if actual_notional < min_notional:
-                # 计算需要的最小数量（向上取整到精度要求）
+            if quantity == 0 or actual_notional < min_notional:
+                # 计算满足最小名义价值所需的数量（向上取整到精度要求）
                 required_quantity = min_notional / current_price
                 # 向上取整到精度要求
                 if 'BTC' in symbol or 'ETH' in symbol:
@@ -626,12 +621,21 @@ class AITradingEngine:
                 else:
                     required_quantity = math.ceil(required_quantity * 10) / 10  # 默认向上取整到0.1
                 
-                quantity = required_quantity
-                adjusted_notional = quantity * current_price
+                # 计算所需保证金
+                adjusted_notional = required_quantity * current_price
+                required_margin = adjusted_notional / leverage
                 
-                self.logger.warning(f"[FIX] [{symbol}] 名义价值不足，已调整: "
-                                   f"数量 {raw_quantity:.6f} → {quantity:.6f}, "
-                                   f"名义价值 ${actual_notional:.2f} → ${adjusted_notional:.2f}")
+                # 获取可用余额
+                available_balance = self.binance.get_futures_usdt_balance()
+                
+                if required_margin > available_balance:
+                    self.logger.warning(f"[{symbol}] 最小交易需要保证金 ${required_margin:.2f}，可用余额 ${available_balance:.2f}，无法开仓")
+                    return {'success': False, 'error': f'账户余额不足：需要 ${required_margin:.2f}，可用 ${available_balance:.2f}'}
+                
+                self.logger.info(f"[FIX] [{symbol}] 数量调整: {raw_quantity:.6f} → {required_quantity:.6f}, "
+                               f"名义价值: ${actual_notional:.2f} → ${adjusted_notional:.2f}, "
+                               f"所需保证金: ${required_margin:.2f}")
+                quantity = required_quantity
 
             # 计算止损止盈价格（四舍五入到2位小数，USDT精度要求）
             stop_loss = round(current_price * (1 - stop_loss_pct), 2)
@@ -746,15 +750,10 @@ class AITradingEngine:
             else:
                 quantity = round(raw_quantity, 1)  # 默认: 0.1 (大多数山寨币)
 
-            # 确保不为0（小账户可能出现）
-            if quantity == 0:
-                self.logger.warning(f"{symbol} 计算数量为0，账户太小无法交易")
-                return {'success': False, 'error': '账户余额太小，无法满足最低交易量'}
-
-            # 🔧 检查并确保名义价值满足币安最小要求（$20）
+            # 🔧 如果计算数量为0或名义价值不足，尝试使用最小交易量
             actual_notional = quantity * current_price
-            if actual_notional < min_notional:
-                # 计算需要的最小数量（向上取整到精度要求）
+            if quantity == 0 or actual_notional < min_notional:
+                # 计算满足最小名义价值所需的数量（向上取整到精度要求）
                 required_quantity = min_notional / current_price
                 # 向上取整到精度要求
                 if 'BTC' in symbol or 'ETH' in symbol:
@@ -766,12 +765,21 @@ class AITradingEngine:
                 else:
                     required_quantity = math.ceil(required_quantity * 10) / 10  # 默认向上取整到0.1
                 
-                quantity = required_quantity
-                adjusted_notional = quantity * current_price
+                # 计算所需保证金
+                adjusted_notional = required_quantity * current_price
+                required_margin = adjusted_notional / leverage
                 
-                self.logger.warning(f"[FIX] [{symbol}] 名义价值不足，已调整: "
-                                   f"数量 {raw_quantity:.6f} → {quantity:.6f}, "
-                                   f"名义价值 ${actual_notional:.2f} → ${adjusted_notional:.2f}")
+                # 获取可用余额
+                available_balance = self.binance.get_futures_usdt_balance()
+                
+                if required_margin > available_balance:
+                    self.logger.warning(f"[{symbol}] 最小交易需要保证金 ${required_margin:.2f}，可用余额 ${available_balance:.2f}，无法开仓")
+                    return {'success': False, 'error': f'账户余额不足：需要 ${required_margin:.2f}，可用 ${available_balance:.2f}'}
+                
+                self.logger.info(f"[FIX] [{symbol}] 数量调整: {raw_quantity:.6f} → {required_quantity:.6f}, "
+                               f"名义价值: ${actual_notional:.2f} → ${adjusted_notional:.2f}, "
+                               f"所需保证金: ${required_margin:.2f}")
+                quantity = required_quantity
 
             # 计算止损止盈价格（四舍五入到2位小数，USDT精度要求）
             stop_loss = round(current_price * (1 + stop_loss_pct), 2)
