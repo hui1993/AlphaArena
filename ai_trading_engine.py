@@ -552,29 +552,35 @@ class AITradingEngine:
             current_price = self.market_analyzer.get_current_price(symbol)
 
             # [CONFIG] 智能杠杆调整：同时满足币安名义价值和精度要求
-            # 先确定精度规则
+            # 先确定精度规则和最小名义价值（币安不同交易对要求不同）
             if 'BTC' in symbol:
                 precision = 3  # BTC: 0.001
                 min_qty = 0.001
+                base_min_notional = 100  # BTC 最小名义价值 $100
             elif 'ETH' in symbol:
                 precision = 3  # ETH: 0.001
                 min_qty = 0.001
+                base_min_notional = 20  # ETH 最小名义价值 $20
             elif 'BNB' in symbol:
-                precision = 1  # BNB: 0.1
-                min_qty = 0.1
+                precision = 2  # BNB: 0.01
+                min_qty = 0.01
+                base_min_notional = 20  # BNB 最小名义价值 $20
             elif 'SOL' in symbol:
                 precision = 1  # SOL: 0.1
                 min_qty = 0.1
+                base_min_notional = 20  # SOL 最小名义价值 $20
             elif 'DOGE' in symbol:
                 precision = 0  # DOGE: 整数
                 min_qty = 1.0
+                base_min_notional = 20  # DOGE 最小名义价值 $20
             else:
                 precision = 1  # 默认: 0.1
                 min_qty = 0.1
+                base_min_notional = 20  # 默认最小名义价值 $20
 
             # 计算满足精度要求所需的最小名义价值
             min_notional_for_precision = min_qty * current_price
-            min_notional = max(20, min_notional_for_precision)  # 至少$20，或满足精度要求
+            min_notional = max(base_min_notional, min_notional_for_precision)  # 取交易所要求和精度要求的最大值
 
             # 计算所需杠杆
             required_leverage = int(min_notional / amount) + 1
@@ -696,29 +702,35 @@ class AITradingEngine:
             current_price = self.market_analyzer.get_current_price(symbol)
 
             # [CONFIG] 智能杠杆调整：同时满足币安名义价值和精度要求
-            # 先确定精度规则
+            # 先确定精度规则和最小名义价值（币安不同交易对要求不同）
             if 'BTC' in symbol:
                 precision = 3  # BTC: 0.001
                 min_qty = 0.001
+                base_min_notional = 100  # BTC 最小名义价值 $100
             elif 'ETH' in symbol:
                 precision = 3  # ETH: 0.001
                 min_qty = 0.001
+                base_min_notional = 20  # ETH 最小名义价值 $20
             elif 'BNB' in symbol:
-                precision = 1  # BNB: 0.1
-                min_qty = 0.1
+                precision = 2  # BNB: 0.01
+                min_qty = 0.01
+                base_min_notional = 20  # BNB 最小名义价值 $20
             elif 'SOL' in symbol:
                 precision = 1  # SOL: 0.1
                 min_qty = 0.1
+                base_min_notional = 20  # SOL 最小名义价值 $20
             elif 'DOGE' in symbol:
                 precision = 0  # DOGE: 整数
                 min_qty = 1.0
+                base_min_notional = 20  # DOGE 最小名义价值 $20
             else:
                 precision = 1  # 默认: 0.1
                 min_qty = 0.1
+                base_min_notional = 20  # 默认最小名义价值 $20
 
             # 计算满足精度要求所需的最小名义价值
             min_notional_for_precision = min_qty * current_price
-            min_notional = max(20, min_notional_for_precision)  # 至少$20，或满足精度要求
+            min_notional = max(base_min_notional, min_notional_for_precision)  # 取交易所要求和精度要求的最大值
 
             # 计算所需杠杆
             required_leverage = int(min_notional / amount) + 1
