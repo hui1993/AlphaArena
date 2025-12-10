@@ -599,27 +599,38 @@ class AlphaArenaBot:
             self.total_invocations += 1
 
             if result['success']:
-                action = result.get('trade_result', {}).get('action', 'HOLD')
                 ai_decision = result.get('ai_decision', {})
+                trade_result = result.get('trade_result', {})
+                
+                # 从 AI 决策获取真正的 action（而不是从 trade_result）
+                ai_action = ai_decision.get('action', 'HOLD')
+                trade_success = trade_result.get('success', False)
+                executed_action = trade_result.get('action', None)
 
                 # 保存所有AI决策（包括HOLD）到文件供仪表板显示
-                self._save_ai_decision(symbol, ai_decision, result.get('trade_result', {}))
+                self._save_ai_decision(symbol, ai_decision, trade_result)
 
                 # 获取AI的叙述性决策说明（优先使用narrative，其次reasoning）
                 narrative = ai_decision.get('narrative', ai_decision.get('reasoning', ''))
 
-                if action in ['BUY', 'SELL', 'OPEN_LONG', 'OPEN_SHORT']:
-                    # 记录交易
-                    trade_info = result['trade_result']
-                    trade_info['confidence'] = ai_decision.get('confidence', 0)
-                    trade_info['reasoning'] = ai_decision.get('reasoning', '')
+                if ai_action in ['BUY', 'SELL', 'OPEN_LONG', 'OPEN_SHORT']:
+                    if trade_success and executed_action:
+                        # 交易执行成功
+                        trade_info = trade_result
+                        trade_info['confidence'] = ai_decision.get('confidence', 0)
+                        trade_info['reasoning'] = ai_decision.get('reasoning', '')
 
-                    self.performance.record_trade(trade_info)
+                        self.performance.record_trade(trade_info)
 
-                    self.logger.info(f"[AI] {symbol} 决策: {action} (信心度: {ai_decision.get('confidence', 0)}%) | {narrative[:100]}{'...' if len(narrative) > 100 else ''}")
+                        self.logger.info(f"[AI] {symbol} 决策: {ai_action} (信心度: {ai_decision.get('confidence', 0)}%) | {narrative[:100]}{'...' if len(narrative) > 100 else ''}")
+                    else:
+                        # AI 决策开仓但执行失败
+                        error_msg = trade_result.get('error', '未知错误')
+                        self.logger.warning(f"[AI] {symbol} 决策: {ai_action} (信心度: {ai_decision.get('confidence', 0)}%) - 执行失败: {error_msg}")
+                        self.logger.info(f"[AI] {symbol} 理由: {narrative[:100]}{'...' if len(narrative) > 100 else ''}")
                 else:
                     # HOLD决策 - 显示叙述性说明
-                    self.logger.info(f"[AI] {symbol} 决策: {action} | {narrative[:100]}{'...' if len(narrative) > 100 else ''}")
+                    self.logger.info(f"[AI] {symbol} 决策: {ai_action} | {narrative[:100]}{'...' if len(narrative) > 100 else ''}")
 
             else:
                 error_msg = result.get('error', '未知错误')
